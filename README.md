@@ -33,6 +33,7 @@ Or view the model on Hugging Face Spaces:
 ---
 
 ## 📁 Project Structure
+```
 credit-card-statement-extractor/
 │
 ├─ app.py # Streamlit main app
@@ -40,7 +41,7 @@ credit-card-statement-extractor/
 ├─ model/ # Saved Hugging Face QA model (optional if using HF repo)
 ├─ README.md # Project documentation
 └─ sample_pdfs/ # Example PDF statements (optional)
-
+```
 ---
 
 ## 🛠 How to Run Locally
