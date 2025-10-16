@@ -94,31 +94,33 @@ def create_meaningful_plots(df):
     axes[0,0].set_ylabel("Amount (₹)")
     axes[0,0].grid(axis='y', linestyle='--', alpha=0.7)
 
-    # 2. Average Amount Due per Billing Cycle (Bar Chart)
-    billing_avg = df.groupby("Billing Cycle")["Total Amount Due"].mean().sort_values(ascending=False)
-    billing_avg.plot(kind="bar", color="#FF7F0E", edgecolor="black", ax=axes[0,1])
-    axes[0,1].set_title("Average Amount Due per Billing Cycle")
+    # 2. Average Statement Amount by Billing Cycle Month
+    df['Billing Start Month'] = pd.to_datetime(df['Billing Cycle'], errors='coerce').dt.month
+    month_avg = df.groupby('Billing Start Month')["Total Amount Due"].mean()
+    month_avg.plot(kind='bar', color="#FF7F0E", edgecolor="black", ax=axes[0,1])
+    axes[0,1].set_title("Average Statement Amount by Billing Start Month")
+    axes[0,1].set_xlabel("Month")
     axes[0,1].set_ylabel("Average Amount (₹)")
-    axes[0,1].set_xlabel("Billing Cycle")
-    axes[0,1].tick_params(axis='x', rotation=45)
+    axes[0,1].tick_params(axis='x', rotation=0)
     axes[0,1].grid(axis='y', linestyle='--', alpha=0.5)
 
-    # 3. Card Distribution per Bank (Stacked Bar Chart)
-    card_dist = df.groupby(["Bank Name", "Card Last 4"]).size().unstack(fill_value=0)
-    card_dist.plot(kind="bar", stacked=True, ax=axes[0,2], cmap="tab20")
-    axes[0,2].set_title("Card Distribution per Bank")
-    axes[0,2].set_ylabel("Number of Cards")
-    axes[0,2].set_xlabel("Bank Name")
-    axes[0,2].tick_params(axis='x', rotation=45)
+    # 3. Distribution of Payment Amounts (Histogram by Ranges)
+    bins = [0, 10000, 50000, df["Total Amount Due"].max()+1]
+    labels = ['Small (<10k)', 'Medium (10k-50k)', 'High (>50k)']
+    df['Amount Range'] = pd.cut(df['Total Amount Due'], bins=bins, labels=labels, include_lowest=True)
+    amount_counts = df['Amount Range'].value_counts().reindex(labels)
+    amount_counts.plot(kind='bar', color="#2CA02C", edgecolor="black", ax=axes[0,2])
+    axes[0,2].set_title("Distribution of Payment Amounts")
+    axes[0,2].set_xlabel("Amount Range")
+    axes[0,2].set_ylabel("Number of Statements")
 
-    # 4. High-Value Payments by Month (Scatter Plot)
-    df['Month'] = pd.to_datetime(df['Payment Due Date'], errors='coerce').dt.to_period('M')
+    # 4. Bank-wise High-Value Statement Counts (> ₹50k)
     high_value_threshold = 50000
-    high_value_df = df[df['Total Amount Due'] > high_value_threshold]
-    axes[1,0].scatter(high_value_df['Month'].astype(str), high_value_df['Total Amount Due'], color="#D62728", s=100)
-    axes[1,0].set_title(f"High-Value Payments by Month (> ₹{high_value_threshold})")
-    axes[1,0].set_xlabel("Month")
-    axes[1,0].set_ylabel("Amount (₹)")
+    high_value_counts = df[df['Total Amount Due'] > high_value_threshold].groupby("Bank Name").size()
+    high_value_counts.plot(kind='bar', color="#D62728", edgecolor="black", ax=axes[1,0])
+    axes[1,0].set_title(f"High-Value Statement Counts per Bank (> ₹{high_value_threshold})")
+    axes[1,0].set_xlabel("Bank Name")
+    axes[1,0].set_ylabel("Number of Statements")
     axes[1,0].tick_params(axis='x', rotation=45)
 
     # 5. Top 5 Cards by Average Amount - unchanged
@@ -268,6 +270,7 @@ if uploaded_files:
     for chat in st.session_state.chat_history[::-1]:
         st.markdown(f"**You:** {chat['user']}")
         st.markdown(f"**Bot:** {chat['bot']}")
+
 
 
 
