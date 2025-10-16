@@ -87,14 +87,14 @@ def create_meaningful_plots(df):
     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
     fig.tight_layout(pad=4)
 
-    # 1. Total Amount Due per Bank - unchanged
+    # 1. Total Amount Due per Bank
     bank_totals = df.groupby("Bank Name")["Total Amount Due"].sum().sort_values(ascending=False)
     bank_totals.plot(kind="bar", color="#4F81BD", edgecolor="black", ax=axes[0,0])
     axes[0,0].set_title("Total Amount Due per Bank")
     axes[0,0].set_ylabel("Amount (₹)")
     axes[0,0].grid(axis='y', linestyle='--', alpha=0.7)
 
-    # 2. Monthly Spending Trends (Total per Month)
+    # 2. Monthly Spending Trends (Line)
     df['Month'] = pd.to_datetime(df['Payment Due Date'], errors='coerce').dt.to_period('M')
     monthly_total = df.groupby('Month')["Total Amount Due"].sum()
     monthly_total.plot(kind="line", marker='o', color="#FF7F0E", ax=axes[0,1])
@@ -104,16 +104,15 @@ def create_meaningful_plots(df):
     axes[0,1].grid(True, linestyle='--', alpha=0.5)
     axes[0,1].tick_params(axis='x', rotation=45)
 
-    # 3. Payment Timeliness (Early/Mid/Late Month)
+    # 3. Payment Timeliness Distribution
     due_days = pd.to_datetime(df['Payment Due Date'], errors='coerce').dt.day
     bins = [0,10,20,31]
     labels = ["Early (1-10)", "Mid (11-20)", "Late (21-31)"]
     df['Due Period'] = pd.cut(due_days, bins=bins, labels=labels, include_lowest=True)
     due_period_counts = df['Due Period'].value_counts().reindex(labels)
-    due_period_counts.plot(kind="bar", color="#2CA02C", edgecolor="black", ax=axes[0,2])
-    axes[0,2].set_title("Payment Due Distribution")
-    axes[0,2].set_ylabel("Number of Statements")
-    axes[0,2].set_xlabel("Period of Month")
+    due_period_counts.plot(kind="pie", autopct='%1.1f%%', startangle=90, ax=axes[0,2], colors=["#2CA02C","#98DF8A","#2CA02C"])
+    axes[0,2].set_title("Payment Due Period Distribution")
+    axes[0,2].set_ylabel("")
 
     # 4. High-Value Statements per Bank (> ₹50,000)
     high_value_threshold = 50000
@@ -124,7 +123,7 @@ def create_meaningful_plots(df):
     axes[1,0].set_ylabel("Amount (₹)")
     axes[1,0].tick_params(axis='x', rotation=45)
 
-    # 5. Top 5 Cards by Average Amount - unchanged
+    # 5. Top 5 Cards by Average Amount
     top5_cards = df.groupby("Card Last 4")["Total Amount Due"].mean().sort_values(ascending=False).head(5)
     top5_cards.plot(kind="bar", color="#17BECF", edgecolor="black", ax=axes[1,1])
     axes[1,1].set_title("Top 5 Cards by Average Amount")
@@ -132,7 +131,7 @@ def create_meaningful_plots(df):
     axes[1,1].set_xlabel("Card Last 4")
     axes[1,1].tick_params(axis='x', rotation=45)
 
-    # 6. Number of Statements per Bank - unchanged
+    # 6. Number of Statements per Bank
     statements_per_bank = df.groupby("Bank Name").size().sort_values(ascending=False)
     statements_per_bank.plot(kind="bar", color="#BCBD22", edgecolor="black", ax=axes[1,2])
     axes[1,2].set_title("Number of Statements per Bank")
@@ -144,7 +143,7 @@ def create_meaningful_plots(df):
     return fig
 
 # ----------------------------
-# PDF Generator
+# PDF Generator with Table → Plots → Useful Info
 # ----------------------------
 def generate_pdf(df, fig):
     buffer = BytesIO()
@@ -153,14 +152,12 @@ def generate_pdf(df, fig):
     elements = []
     styles = getSampleStyleSheet()
 
-    # Title and metadata
+    # Title
     title = Paragraph("Credit Card Statement Extraction Report", styles['Title'])
     date_text = Paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M')}", styles['Normal'])
     elements += [title, Spacer(1, 10), date_text, Spacer(1, 20)]
 
-    # ---------------------------
-    # 1. Table of Extracted Data
-    # ---------------------------
+    # 1. Table
     table_title = Paragraph("📋 Extracted Data Table", styles['Heading2'])
     elements.append(table_title)
     elements.append(Spacer(1, 10))
@@ -190,9 +187,7 @@ def generate_pdf(df, fig):
     elements.append(table)
     elements.append(Spacer(1, 20))
 
-    # ---------------------------
-    # 2. Plots / Visualizations
-    # ---------------------------
+    # 2. Plots
     plots_title = Paragraph("📈 Data Visualizations", styles['Heading2'])
     elements.append(plots_title)
     elements.append(Spacer(1, 10))
@@ -206,14 +201,11 @@ def generate_pdf(df, fig):
     elements.append(img)
     elements.append(Spacer(1, 20))
 
-    # ---------------------------
-    # 3. Useful Textual Information
-    # ---------------------------
+    # 3. Useful Info
     info_title = Paragraph("📌 Summary, Terms & Classification Criteria", styles['Heading2'])
     elements.append(info_title)
     elements.append(Spacer(1, 10))
 
-    # Summary & Insights
     total_due_sum = df["Total Amount Due"].sum()
     avg_confidence = df["Avg Confidence (%)"].mean()
     num_statements = len(df)
@@ -233,34 +225,30 @@ def generate_pdf(df, fig):
     Bank with highest total due: {top_bank}<br/>
     Card with highest average due: {top_card}<br/>
     """
-    
-    # Terms & Conditions / Notes
+
     terms_text = """
     1. This report is auto-generated based on PDFs uploaded by the user.<br/>
     2. Extracted amounts and dates are indicative; verify with original statements before making financial decisions.<br/>
     3. High-value statements indicate large expenditures and should be managed responsibly.<br/>
-    4. Payment periods are categorized as Early (1-10), Mid (11-20), Late (21-31) month.<br/>
-    5. QA confidence scores indicate reliability of extracted information.
+    4. Payment periods: Early (1-10), Mid (11-20), Late (21-31) month.<br/>
+    5. QA confidence indicates reliability of extracted information.
     """
 
-    # Classification Criteria
     classification_text = f"""
     Classification Criteria:<br/>
     - High Value Statement: > ₹{high_value_threshold}<br/>
     - Medium Value Statement: ₹20,000 - ₹{high_value_threshold}<br/>
     - Low Value Statement: < ₹20,000<br/>
-    - Payment Due Periods: Early (1-10), Mid (11-20), Late (21-31)<br/>
+    - Payment Due Periods: Early, Mid, Late<br/>
     - Confidence Levels: High (>80%), Medium (50-80%), Low (<50%)
     """
 
-    # Combine all info
     info_paragraph = Paragraph(summary_text + "<br/>" + terms_text + "<br/>" + classification_text, styles['Normal'])
     elements.append(info_paragraph)
 
     doc.build(elements)
     buffer.seek(0)
     return buffer
-
 
 # ----------------------------
 # Streamlit UI
@@ -310,7 +298,7 @@ if uploaded_files:
     # Downloads
     csv_file = df.to_csv(index=False).encode('utf-8')
     st.download_button("⬇️ Download Extracted Data as CSV", csv_file, "credit_statements_data.csv", "text/csv")
-    pdf_buffer = generate_pdf(df, summary_text, fig)
+    pdf_buffer = generate_pdf(df, fig)
     st.download_button("📄 Download Full Report as PDF", pdf_buffer, "credit_statements_report.pdf", "application/pdf")
 
     # ----------------------------
@@ -336,4 +324,3 @@ if uploaded_files:
     for chat in st.session_state.chat_history[::-1]:
         st.markdown(f"**You:** {chat['user']}")
         st.markdown(f"**Bot:** {chat['bot']}")
-
