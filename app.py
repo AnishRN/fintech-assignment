@@ -211,4 +211,36 @@ if uploaded_files:
             all_extracted_data.append(cleaned_data)
 
     df = pd.DataFrame(all_extracted_data)
-    df
+    df["Total Amount Due"] = df["Total Amount Due"].astype(float)
+    df["Avg Confidence (%)"] = df["Avg Confidence (%)"].astype(float)
+
+    st.subheader("📊 Extracted Information")
+    st.dataframe(df.style.format({"Total Amount Due": "₹{:,.2f}"}))
+
+    # Summary
+    total_due_sum = df["Total Amount Due"].sum()
+    avg_confidence = df["Avg Confidence (%)"].mean()
+    summary_text = f"Processed {len(df)} statements. Total due: ₹{total_due_sum:,.2f}. Average confidence: {avg_confidence:.2f}%."
+    st.subheader("📈 Summary Insights")
+    st.markdown(summary_text)
+
+    # Plots
+    fig = create_meaningful_plots(df)
+    st.pyplot(fig)
+
+    # Downloads
+    csv_file = df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="⬇️ Download Extracted Data as CSV",
+        data=csv_file,
+        file_name="credit_statements_data.csv",
+        mime="text/csv"
+    )
+
+    pdf_buffer = generate_pdf(df, summary_text, fig)
+    st.download_button(
+        label="📄 Download Full Report as PDF",
+        data=pdf_buffer,
+        file_name="credit_statements_report.pdf",
+        mime="application/pdf"
+    )
