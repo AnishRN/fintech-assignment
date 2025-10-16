@@ -81,7 +81,7 @@ def clean_extracted_data(data):
     }
 
 # ----------------------------
-# Create 6 meaningful plots in subplots
+# Create 6 meaningful plots
 # ----------------------------
 def create_meaningful_plots(df):
     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
@@ -202,9 +202,11 @@ if uploaded_files:
     qa_pipeline = load_qa_pipeline()
     all_extracted_data = []
 
+    full_text = ""  # for user Q&A
     for pdf_file in uploaded_files:
         with st.spinner(f"Processing {pdf_file.name}..."):
             pdf_text = extract_text_from_pdf(pdf_file)
+            full_text += pdf_text + " "
             extracted_data = extract_fields_with_qa(pdf_text, qa_pipeline)
             extracted_data["file_name"] = pdf_file.name
             cleaned_data = clean_extracted_data(extracted_data)
@@ -214,6 +216,7 @@ if uploaded_files:
     df["Total Amount Due"] = df["Total Amount Due"].astype(float)
     df["Avg Confidence (%)"] = df["Avg Confidence (%)"].astype(float)
 
+    # Display table
     st.subheader("📊 Extracted Information")
     st.dataframe(df.style.format({"Total Amount Due": "₹{:,.2f}"}))
 
@@ -230,17 +233,24 @@ if uploaded_files:
 
     # Downloads
     csv_file = df.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="⬇️ Download Extracted Data as CSV",
-        data=csv_file,
-        file_name="credit_statements_data.csv",
-        mime="text/csv"
-    )
-
+    st.download_button("⬇️ Download Extracted Data as CSV", csv_file, "credit_statements_data.csv", "text/csv")
     pdf_buffer = generate_pdf(df, summary_text, fig)
-    st.download_button(
-        label="📄 Download Full Report as PDF",
-        data=pdf_buffer,
-        file_name="credit_statements_report.pdf",
-        mime="application/pdf"
-    )
+    st.download_button("📄 Download Full Report as PDF", pdf_buffer, "credit_statements_report.pdf", "application/pdf")
+
+    # ----------------------------
+    # User Q&A Section
+    # ----------------------------
+    st.subheader("❓ Ask Questions About Your Statements")
+    user_question = st.text_input("Type your question here (e.g., 'What is the total due for Bank X?')")
+
+    if user_question:
+        if full_text:
+            with st.spinner("Finding answer..."):
+                try:
+                    answer = qa_pipeline(question=user_question, context=full_text)
+                    st.success(f"**Answer:** {answer.get('answer', 'Not found')}")
+                    st.info(f"Confidence: {round(answer.get('score',0)*100,2)}%")
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
+        else:
+            st.warning("Please upload PDF statements first.")
