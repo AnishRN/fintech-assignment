@@ -9,7 +9,7 @@ from io import BytesIO
 
 # PDF generation imports
 from reportlab.lib.pagesizes import letter, landscape
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 
@@ -24,7 +24,7 @@ def extract_text_from_pdf(pdf_file):
 
 @st.cache_resource
 def load_qa_pipeline():
-    model_path = "yakul259/credit-statement-scraper"  # replace with your model
+    model_path = "yakul259/credit-statement-scraper"
     return pipeline("question-answering", model=model_path, tokenizer=model_path)
 
 def extract_fields_with_qa(text, qa_pipeline):
@@ -35,7 +35,6 @@ def extract_fields_with_qa(text, qa_pipeline):
         "payment_due_date": "What is the payment due date?",
         "total_amount_due": "What is the total amount due?"
     }
-
     answers = {}
     for key, question in questions.items():
         try:
@@ -64,12 +63,8 @@ def normalize_date(date_str):
     return clean_text(date_str)
 
 def clean_extracted_data(data):
-    numeric_scores = [
-        v["score"] for v in data.values()
-        if isinstance(v, dict) and "score" in v
-    ]
+    numeric_scores = [v["score"] for v in data.values() if isinstance(v, dict) and "score" in v]
     avg_conf = round(sum(numeric_scores) / len(numeric_scores), 2) if numeric_scores else 0
-
     return {
         "File Name": data.get("file_name", ""),
         "Bank Name": clean_text(data["bank_name"]["answer"]),
@@ -81,20 +76,20 @@ def clean_extracted_data(data):
     }
 
 # ----------------------------
-# Create meaningful plots
+# Plots
 # ----------------------------
 def create_meaningful_plots(df):
     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
     fig.tight_layout(pad=4)
 
-    # 1. Total Amount Due per Bank
+    # Total Amount Due per Bank
     bank_totals = df.groupby("Bank Name")["Total Amount Due"].sum().sort_values(ascending=False)
     bank_totals.plot(kind="bar", color="#4F81BD", edgecolor="black", ax=axes[0,0])
     axes[0,0].set_title("Total Amount Due per Bank")
     axes[0,0].set_ylabel("Amount (₹)")
     axes[0,0].grid(axis='y', linestyle='--', alpha=0.7)
 
-    # 2. Monthly Spending Trends (Line)
+    # Monthly Spending Trends
     df['Month'] = pd.to_datetime(df['Payment Due Date'], errors='coerce').dt.to_period('M')
     monthly_total = df.groupby('Month')["Total Amount Due"].sum()
     monthly_total.plot(kind="line", marker='o', color="#FF7F0E", ax=axes[0,1])
@@ -104,7 +99,7 @@ def create_meaningful_plots(df):
     axes[0,1].grid(True, linestyle='--', alpha=0.5)
     axes[0,1].tick_params(axis='x', rotation=45)
 
-    # 3. Payment Timeliness Distribution
+    # Payment Timeliness Distribution
     due_days = pd.to_datetime(df['Payment Due Date'], errors='coerce').dt.day
     bins = [0,10,20,31]
     labels = ["Early (1-10)", "Mid (11-20)", "Late (21-31)"]
@@ -114,7 +109,7 @@ def create_meaningful_plots(df):
     axes[0,2].set_title("Payment Due Period Distribution")
     axes[0,2].set_ylabel("")
 
-    # 4. High-Value Statements per Bank (> ₹50,000)
+    # High-Value Statements per Bank
     high_value_threshold = 50000
     high_value_df = df[df['Total Amount Due'] > high_value_threshold]
     axes[1,0].scatter(high_value_df["Bank Name"], high_value_df["Total Amount Due"], color="#D62728", s=100)
@@ -123,7 +118,7 @@ def create_meaningful_plots(df):
     axes[1,0].set_ylabel("Amount (₹)")
     axes[1,0].tick_params(axis='x', rotation=45)
 
-    # 5. Top 5 Cards by Average Amount
+    # Top 5 Cards by Average Amount
     top5_cards = df.groupby("Card Last 4")["Total Amount Due"].mean().sort_values(ascending=False).head(5)
     top5_cards.plot(kind="bar", color="#17BECF", edgecolor="black", ax=axes[1,1])
     axes[1,1].set_title("Top 5 Cards by Average Amount")
@@ -131,7 +126,7 @@ def create_meaningful_plots(df):
     axes[1,1].set_xlabel("Card Last 4")
     axes[1,1].tick_params(axis='x', rotation=45)
 
-    # 6. Number of Statements per Bank
+    # Number of Statements per Bank
     statements_per_bank = df.groupby("Bank Name").size().sort_values(ascending=False)
     statements_per_bank.plot(kind="bar", color="#BCBD22", edgecolor="black", ax=axes[1,2])
     axes[1,2].set_title("Number of Statements per Bank")
@@ -143,7 +138,7 @@ def create_meaningful_plots(df):
     return fig
 
 # ----------------------------
-# PDF Generator with Table → Plots → Useful Info
+# PDF Generation (3 pages)
 # ----------------------------
 def generate_pdf(df, fig):
     buffer = BytesIO()
@@ -152,12 +147,11 @@ def generate_pdf(df, fig):
     elements = []
     styles = getSampleStyleSheet()
 
-    # Title
+    # --- Page 1: Table ---
     title = Paragraph("Credit Card Statement Extraction Report", styles['Title'])
-    date_text = Paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M')}", styles['Normal'])
-    elements += [title, Spacer(1, 10), date_text, Spacer(1, 20)]
+    elements.append(title)
+    elements.append(Spacer(1, 15))
 
-    # 1. Table
     table_title = Paragraph("📋 Extracted Data Table", styles['Heading2'])
     elements.append(table_title)
     elements.append(Spacer(1, 10))
@@ -168,10 +162,7 @@ def generate_pdf(df, fig):
         wrapped_row = [Paragraph(str(cell), styles['Normal']) for cell in row]
         wrapped_data.append(wrapped_row)
 
-    total_width = 10.5 * 72
-    col_width = total_width / len(df.columns)
-    col_widths = [col_width]*len(df.columns)
-
+    col_widths = [720/len(df.columns)]*len(df.columns)
     table = Table(wrapped_data, colWidths=col_widths, hAlign='CENTER')
     table.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#4F81BD")),
@@ -185,13 +176,12 @@ def generate_pdf(df, fig):
         ("GRID", (0,0), (-1,-1), 0.25, colors.grey)
     ]))
     elements.append(table)
-    elements.append(Spacer(1, 20))
+    elements.append(PageBreak())
 
-    # 2. Plots
+    # --- Page 2: Plots ---
     plots_title = Paragraph("📈 Data Visualizations", styles['Heading2'])
     elements.append(plots_title)
     elements.append(Spacer(1, 10))
-
     fig_buffer = BytesIO()
     fig.savefig(fig_buffer, format='PNG', dpi=150, bbox_inches='tight')
     fig_buffer.seek(0)
@@ -199,9 +189,9 @@ def generate_pdf(df, fig):
     img.drawHeight = 400
     img.drawWidth = 720
     elements.append(img)
-    elements.append(Spacer(1, 20))
+    elements.append(PageBreak())
 
-    # 3. Useful Info
+    # --- Page 3: Useful Info ---
     info_title = Paragraph("📌 Summary, Terms & Classification Criteria", styles['Heading2'])
     elements.append(info_title)
     elements.append(Spacer(1, 10))
@@ -227,24 +217,24 @@ def generate_pdf(df, fig):
     """
 
     terms_text = """
-    1. This report is auto-generated based on PDFs uploaded by the user.<br/>
-    2. Extracted amounts and dates are indicative; verify with original statements before making financial decisions.<br/>
-    3. High-value statements indicate large expenditures and should be managed responsibly.<br/>
-    4. Payment periods: Early (1-10), Mid (11-20), Late (21-31) month.<br/>
-    5. QA confidence indicates reliability of extracted information.
+    1. This report is auto-generated based on uploaded PDFs.<br/>
+    2. Verify extracted amounts before making financial decisions.<br/>
+    3. High-value statements indicate significant expenditures.<br/>
+    4. Ensure secure handling of sensitive card information.<br/>
     """
 
-    classification_text = f"""
+    classification_text = """
     Classification Criteria:<br/>
-    - High Value Statement: > ₹{high_value_threshold}<br/>
-    - Medium Value Statement: ₹20,000 - ₹{high_value_threshold}<br/>
-    - Low Value Statement: < ₹20,000<br/>
-    - Payment Due Periods: Early, Mid, Late<br/>
-    - Confidence Levels: High (>80%), Medium (50-80%), Low (<50%)
+    - Early / Mid / Late month payment due dates.<br/>
+    - High-value statements (> ₹50,000).<br/>
+    - Top 5 cards by average due amount.<br/>
     """
 
-    info_paragraph = Paragraph(summary_text + "<br/>" + terms_text + "<br/>" + classification_text, styles['Normal'])
-    elements.append(info_paragraph)
+    elements.append(Paragraph(summary_text, styles['Normal']))
+    elements.append(Spacer(1, 10))
+    elements.append(Paragraph(terms_text, styles['Normal']))
+    elements.append(Spacer(1, 10))
+    elements.append(Paragraph(classification_text, styles['Normal']))
 
     doc.build(elements)
     buffer.seek(0)
@@ -265,7 +255,7 @@ uploaded_files = st.file_uploader(
 if uploaded_files:
     qa_pipeline = load_qa_pipeline()
     all_extracted_data = []
-    full_text = ""  # For chatbot context
+    full_text = ""
 
     for pdf_file in uploaded_files:
         with st.spinner(f"Processing {pdf_file.name}..."):
@@ -301,24 +291,21 @@ if uploaded_files:
     pdf_buffer = generate_pdf(df, fig)
     st.download_button("📄 Download Full Report as PDF", pdf_buffer, "credit_statements_report.pdf", "application/pdf")
 
-    # ----------------------------
     # Chatbot-style Q&A
-    # ----------------------------
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
     st.subheader("💬 Ask Your Statements (Chatbot Mode)")
     user_question = st.text_input("Type your question here and press Enter:")
 
-    if user_question:
-        if full_text:
-            with st.spinner("Thinking..."):
-                try:
-                    answer = qa_pipeline(question=user_question, context=full_text)
-                    response_text = f"{answer.get('answer','Not found')} (Confidence: {round(answer.get('score',0)*100,2)}%)"
-                    st.session_state.chat_history.append({"user": user_question, "bot": response_text})
-                except Exception as e:
-                    st.error(f"Error: {str(e)}")
+    if user_question and full_text:
+        with st.spinner("Thinking..."):
+            try:
+                answer = qa_pipeline(question=user_question, context=full_text)
+                response_text = f"{answer.get('answer','Not found')} (Confidence: {round(answer.get('score',0)*100,2)}%)"
+                st.session_state.chat_history.append({"user": user_question, "bot": response_text})
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
 
     # Display chat history (latest on top)
     for chat in st.session_state.chat_history[::-1]:
