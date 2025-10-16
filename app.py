@@ -81,64 +81,57 @@ def clean_extracted_data(data):
     }
 
 # ----------------------------
-# Create meaningful plots
+# Create diverse meaningful plots
 # ----------------------------
-def create_meaningful_plots(df):
-    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+def create_diverse_plots(df):
+    fig, axes = plt.subplots(2, 3, figsize=(15,10))
     fig.tight_layout(pad=4)
 
-    # 1. Total Amount Due per Bank
-    bank_totals = df.groupby("Bank Name")["Total Amount Due"].sum().sort_values(ascending=False)
-    bank_totals.plot(kind="bar", color="#4F81BD", edgecolor="black", ax=axes[0,0])
+    # 1. Total Amount Due per Bank - horizontal bar
+    bank_totals = df.groupby("Bank Name")["Total Amount Due"].sum().sort_values()
+    bank_totals.plot(kind="barh", color="#4F81BD", edgecolor="black", ax=axes[0,0])
     axes[0,0].set_title("Total Amount Due per Bank")
-    axes[0,0].set_ylabel("Amount (₹)")
-    axes[0,0].grid(axis='y', linestyle='--', alpha=0.7)
+    axes[0,0].set_xlabel("Amount (₹)")
+    axes[0,0].grid(axis='x', linestyle='--', alpha=0.7)
 
-    # 2. Total Amount Due per Month
+    # 2. Total Amount Due per Month - area chart
     df['Month'] = pd.to_datetime(df['Payment Due Date'], errors='coerce').dt.to_period('M')
     monthly_total = df.groupby('Month')["Total Amount Due"].sum()
-    monthly_total.plot(kind="line", marker='o', color="#FF7F0E", ax=axes[0,1])
+    monthly_total.plot(kind="area", alpha=0.5, color="#FF7F0E", ax=axes[0,1])
     axes[0,1].set_title("Total Amount Due per Month")
     axes[0,1].set_ylabel("Total Amount (₹)")
     axes[0,1].set_xlabel("Month")
     axes[0,1].grid(True, linestyle='--', alpha=0.5)
-    axes[0,1].tick_params(axis='x', rotation=45)
 
-    # 3. Payment Timeliness (Early / Mid / Late Month)
+    # 3. Payment Timeliness - pie chart
     due_days = pd.to_datetime(df['Payment Due Date'], errors='coerce').dt.day
     bins = [0,10,20,31]
     labels = ["Early (1-10)", "Mid (11-20)", "Late (21-31)"]
     df['Due Period'] = pd.cut(due_days, bins=bins, labels=labels, include_lowest=True)
     due_period_counts = df['Due Period'].value_counts().reindex(labels)
-    due_period_counts.plot(kind="bar", color="#2CA02C", edgecolor="black", ax=axes[0,2])
+    axes[0,2].pie(due_period_counts, labels=labels, autopct='%1.1f%%', colors=["#2CA02C","#FFBB78","#D62728"])
     axes[0,2].set_title("Payment Due Distribution")
-    axes[0,2].set_ylabel("Number of Statements")
-    axes[0,2].set_xlabel("Period of Month")
 
-    # 4. High-Value Statements per Bank (e.g., > ₹50,000)
+    # 4. High-Value Statements per Bank - scatter plot
     high_value_threshold = 50000
-    high_value_counts = df[df['Total Amount Due'] > high_value_threshold].groupby("Bank Name").size()
-    high_value_counts.plot(kind="bar", color="#D62728", edgecolor="black", ax=axes[1,0])
+    high_value_df = df[df['Total Amount Due'] > high_value_threshold]
+    axes[1,0].scatter(high_value_df["Bank Name"], high_value_df["Total Amount Due"], color="#D62728", s=100)
     axes[1,0].set_title(f"Statements > ₹{high_value_threshold} per Bank")
-    axes[1,0].set_ylabel("Count")
     axes[1,0].set_xlabel("Bank Name")
+    axes[1,0].set_ylabel("Amount (₹)")
     axes[1,0].tick_params(axis='x', rotation=45)
 
-    # 5. Top 5 Cards by Average Amount
-    top5_cards = df.groupby("Card Last 4")["Total Amount Due"].mean().sort_values(ascending=False).head(5)
-    top5_cards.plot(kind="bar", color="#17BECF", edgecolor="black", ax=axes[1,1])
+    # 5. Top 5 Cards by Average Amount - horizontal bar
+    top5_cards = df.groupby("Card Last 4")["Total Amount Due"].mean().sort_values()
+    top5_cards.plot(kind="barh", color="#17BECF", edgecolor="black", ax=axes[1,1])
     axes[1,1].set_title("Top 5 Cards by Average Amount")
-    axes[1,1].set_ylabel("Average Amount (₹)")
-    axes[1,1].set_xlabel("Card Last 4")
-    axes[1,1].tick_params(axis='x', rotation=45)
+    axes[1,1].set_xlabel("Average Amount (₹)")
 
-    # 6. Number of Statements per Bank
-    statements_per_bank = df.groupby("Bank Name").size().sort_values(ascending=False)
-    statements_per_bank.plot(kind="bar", color="#BCBD22", edgecolor="black", ax=axes[1,2])
+    # 6. Number of Statements per Bank - donut chart
+    stat_counts = df.groupby("Bank Name").size()
+    wedges, texts, autotexts = axes[1,2].pie(stat_counts, labels=stat_counts.index, autopct='%1.1f%%',
+                                             wedgeprops=dict(width=0.4))
     axes[1,2].set_title("Number of Statements per Bank")
-    axes[1,2].set_ylabel("Count")
-    axes[1,2].set_xlabel("Bank Name")
-    axes[1,2].tick_params(axis='x', rotation=45)
 
     plt.tight_layout()
     return fig
@@ -239,7 +232,7 @@ if uploaded_files:
     st.markdown(summary_text)
 
     # Plots
-    fig = create_meaningful_plots(df)
+    fig = create_diverse_plots(df)
     st.pyplot(fig)
 
     # Downloads
@@ -271,5 +264,3 @@ if uploaded_files:
     for chat in st.session_state.chat_history[::-1]:
         st.markdown(f"**You:** {chat['user']}")
         st.markdown(f"**Bot:** {chat['bot']}")
-
-
