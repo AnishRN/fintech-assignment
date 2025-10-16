@@ -146,19 +146,25 @@ def create_meaningful_plots(df):
 # ----------------------------
 # PDF Generator
 # ----------------------------
-def generate_pdf(df, summary_text, fig):
+def generate_pdf(df, fig):
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter),
+                            rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     elements = []
     styles = getSampleStyleSheet()
 
+    # Title and metadata
     title = Paragraph("Credit Card Statement Extraction Report", styles['Title'])
     date_text = Paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M')}", styles['Normal'])
-    summary = Paragraph(summary_text, styles['Normal'])
+    elements += [title, Spacer(1, 10), date_text, Spacer(1, 20)]
 
-    elements += [title, Spacer(1, 10), date_text, Spacer(1, 10), summary, Spacer(1, 20)]
+    # ---------------------------
+    # 1. Table of Extracted Data
+    # ---------------------------
+    table_title = Paragraph("📋 Extracted Data Table", styles['Heading2'])
+    elements.append(table_title)
+    elements.append(Spacer(1, 10))
 
-    # Table
     data = [df.columns.tolist()] + df.values.tolist()
     wrapped_data = []
     for row in data:
@@ -184,7 +190,13 @@ def generate_pdf(df, summary_text, fig):
     elements.append(table)
     elements.append(Spacer(1, 20))
 
-    # Save figure as image and add to PDF
+    # ---------------------------
+    # 2. Plots / Visualizations
+    # ---------------------------
+    plots_title = Paragraph("📈 Data Visualizations", styles['Heading2'])
+    elements.append(plots_title)
+    elements.append(Spacer(1, 10))
+
     fig_buffer = BytesIO()
     fig.savefig(fig_buffer, format='PNG', dpi=150, bbox_inches='tight')
     fig_buffer.seek(0)
@@ -192,10 +204,63 @@ def generate_pdf(df, summary_text, fig):
     img.drawHeight = 400
     img.drawWidth = 720
     elements.append(img)
+    elements.append(Spacer(1, 20))
+
+    # ---------------------------
+    # 3. Useful Textual Information
+    # ---------------------------
+    info_title = Paragraph("📌 Summary, Terms & Classification Criteria", styles['Heading2'])
+    elements.append(info_title)
+    elements.append(Spacer(1, 10))
+
+    # Summary & Insights
+    total_due_sum = df["Total Amount Due"].sum()
+    avg_confidence = df["Avg Confidence (%)"].mean()
+    num_statements = len(df)
+    num_banks = df["Bank Name"].nunique()
+    high_value_threshold = 50000
+    high_value_count = (df["Total Amount Due"] > high_value_threshold).sum()
+    bank_totals = df.groupby("Bank Name")["Total Amount Due"].sum()
+    top_bank = bank_totals.idxmax() if not bank_totals.empty else "N/A"
+    top_card = df.groupby("Card Last 4")["Total Amount Due"].mean().idxmax() if not df.empty else "N/A"
+
+    summary_text = f"""
+    Number of statements processed: {num_statements}<br/>
+    Number of unique banks: {num_banks}<br/>
+    Total Amount Due across all statements: ₹{total_due_sum:,.2f}<br/>
+    Average QA confidence: {avg_confidence:.2f}%<br/>
+    Number of high-value statements (> ₹{high_value_threshold}): {high_value_count}<br/>
+    Bank with highest total due: {top_bank}<br/>
+    Card with highest average due: {top_card}<br/>
+    """
+    
+    # Terms & Conditions / Notes
+    terms_text = """
+    1. This report is auto-generated based on PDFs uploaded by the user.<br/>
+    2. Extracted amounts and dates are indicative; verify with original statements before making financial decisions.<br/>
+    3. High-value statements indicate large expenditures and should be managed responsibly.<br/>
+    4. Payment periods are categorized as Early (1-10), Mid (11-20), Late (21-31) month.<br/>
+    5. QA confidence scores indicate reliability of extracted information.
+    """
+
+    # Classification Criteria
+    classification_text = f"""
+    Classification Criteria:<br/>
+    - High Value Statement: > ₹{high_value_threshold}<br/>
+    - Medium Value Statement: ₹20,000 - ₹{high_value_threshold}<br/>
+    - Low Value Statement: < ₹20,000<br/>
+    - Payment Due Periods: Early (1-10), Mid (11-20), Late (21-31)<br/>
+    - Confidence Levels: High (>80%), Medium (50-80%), Low (<50%)
+    """
+
+    # Combine all info
+    info_paragraph = Paragraph(summary_text + "<br/>" + terms_text + "<br/>" + classification_text, styles['Normal'])
+    elements.append(info_paragraph)
 
     doc.build(elements)
     buffer.seek(0)
     return buffer
+
 
 # ----------------------------
 # Streamlit UI
@@ -271,3 +336,4 @@ if uploaded_files:
     for chat in st.session_state.chat_history[::-1]:
         st.markdown(f"**You:** {chat['user']}")
         st.markdown(f"**Bot:** {chat['bot']}")
+
