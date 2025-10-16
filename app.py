@@ -94,34 +94,37 @@ def create_meaningful_plots(df):
     axes[0,0].set_ylabel("Amount (₹)")
     axes[0,0].grid(axis='y', linestyle='--', alpha=0.7)
 
-    # 2. Average Statement Amount per Month
+    # 2. Total Amount Due per Month
     df['Month'] = pd.to_datetime(df['Payment Due Date'], errors='coerce').dt.to_period('M')
-    monthly_avg = df.groupby('Month')["Total Amount Due"].mean()
-    monthly_avg.plot(kind="line", marker='o', color="#FF7F0E", ax=axes[0,1])
-    axes[0,1].set_title("Average Statement Amount per Month")
-    axes[0,1].set_ylabel("Average Amount (₹)")
+    monthly_total = df.groupby('Month')["Total Amount Due"].sum()
+    monthly_total.plot(kind="line", marker='o', color="#FF7F0E", ax=axes[0,1])
+    axes[0,1].set_title("Total Amount Due per Month")
+    axes[0,1].set_ylabel("Total Amount (₹)")
     axes[0,1].set_xlabel("Month")
     axes[0,1].grid(True, linestyle='--', alpha=0.5)
     axes[0,1].tick_params(axis='x', rotation=45)
 
-    # 3. Highest and Lowest Statement Amounts per Bank
-    highest_per_bank = df.groupby("Bank Name")["Total Amount Due"].max()
-    lowest_per_bank = df.groupby("Bank Name")["Total Amount Due"].min()
-    axes[0,2].bar(highest_per_bank.index, highest_per_bank.values, color="#2CA02C", alpha=0.7, label="Max")
-    axes[0,2].bar(lowest_per_bank.index, lowest_per_bank.values, color="#D62728", alpha=0.7, label="Min")
-    axes[0,2].set_title("Max & Min Statement Amount per Bank")
-    axes[0,2].set_ylabel("Amount (₹)")
-    axes[0,2].legend()
-    axes[0,2].tick_params(axis='x', rotation=45)
-
-    # 4. Distribution of Payment Due Dates
+    # 3. Payment Timeliness (Early / Mid / Late Month)
     due_days = pd.to_datetime(df['Payment Due Date'], errors='coerce').dt.day
-    axes[1,0].hist(due_days.dropna(), bins=15, color="#9467BD", edgecolor="black")
-    axes[1,0].set_title("Distribution of Payment Due Dates")
-    axes[1,0].set_xlabel("Day of Month")
-    axes[1,0].set_ylabel("Count")
+    bins = [0,10,20,31]
+    labels = ["Early (1-10)", "Mid (11-20)", "Late (21-31)"]
+    df['Due Period'] = pd.cut(due_days, bins=bins, labels=labels, include_lowest=True)
+    due_period_counts = df['Due Period'].value_counts().reindex(labels)
+    due_period_counts.plot(kind="bar", color="#2CA02C", edgecolor="black", ax=axes[0,2])
+    axes[0,2].set_title("Payment Due Distribution")
+    axes[0,2].set_ylabel("Number of Statements")
+    axes[0,2].set_xlabel("Period of Month")
 
-    # 5. Top 5 Cards with Highest Average Amounts
+    # 4. High-Value Statements per Bank (e.g., > ₹50,000)
+    high_value_threshold = 50000
+    high_value_counts = df[df['Total Amount Due'] > high_value_threshold].groupby("Bank Name").size()
+    high_value_counts.plot(kind="bar", color="#D62728", edgecolor="black", ax=axes[1,0])
+    axes[1,0].set_title(f"Statements > ₹{high_value_threshold} per Bank")
+    axes[1,0].set_ylabel("Count")
+    axes[1,0].set_xlabel("Bank Name")
+    axes[1,0].tick_params(axis='x', rotation=45)
+
+    # 5. Top 5 Cards by Average Amount
     top5_cards = df.groupby("Card Last 4")["Total Amount Due"].mean().sort_values(ascending=False).head(5)
     top5_cards.plot(kind="bar", color="#17BECF", edgecolor="black", ax=axes[1,1])
     axes[1,1].set_title("Top 5 Cards by Average Amount")
@@ -268,3 +271,4 @@ if uploaded_files:
     for chat in st.session_state.chat_history[::-1]:
         st.markdown(f"**You:** {chat['user']}")
         st.markdown(f"**Bot:** {chat['bot']}")
+
