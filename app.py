@@ -225,9 +225,12 @@ def generate_pdf(df, fig):
     elements.append(criteria_title)
     elements.append(Spacer(1, 5))
     classification_text = """
-    - Early / Mid / Late month payment due dates.<br/>
-    - High-value statements (> ₹50,000).<br/>
-    - Top 5 cards by average due amount.<br/>
+    - **Early / Mid / Late Month Payment Due Dates**: 
+      - Early: Days 1–10 of the month
+      - Mid: Days 11–20 of the month
+      - Late: Days 21–31 of the month
+    - **High-Value Statements**: Any statement with Total Amount Due > ₹50,000
+    - **Top 5 Cards by Average Due Amount**: Cards with the 5 highest average Total Amount Due across all statements
     """
     elements.append(Paragraph(classification_text, styles['Normal']))
     elements.append(Spacer(1, 15))
@@ -319,3 +322,4 @@ if uploaded_files:
     for chat in st.session_state.chat_history[::-1]:
         st.markdown(f"**You:** {chat['user']}")
         st.markdown(f"**Bot:** {chat['bot']}")
+
