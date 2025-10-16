@@ -4,3 +4,4 @@ transformers==4.44.2
 torch==2.9.0
 pandas==2.1.1
 reportlab
+matplotlib
