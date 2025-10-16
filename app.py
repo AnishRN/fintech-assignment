@@ -24,7 +24,7 @@ def extract_text_from_pdf(pdf_file):
 
 @st.cache_resource
 def load_qa_pipeline():
-    model_path = "yakul259/credit-statement-scraper"
+    model_path = "yakul259/credit-statement-scraper"  # replace with your model
     return pipeline("question-answering", model=model_path, tokenizer=model_path)
 
 def extract_fields_with_qa(text, qa_pipeline):
@@ -35,6 +35,7 @@ def extract_fields_with_qa(text, qa_pipeline):
         "payment_due_date": "What is the payment due date?",
         "total_amount_due": "What is the total amount due?"
     }
+
     answers = {}
     for key, question in questions.items():
         try:
@@ -63,8 +64,12 @@ def normalize_date(date_str):
     return clean_text(date_str)
 
 def clean_extracted_data(data):
-    numeric_scores = [v["score"] for v in data.values() if isinstance(v, dict) and "score" in v]
+    numeric_scores = [
+        v["score"] for v in data.values()
+        if isinstance(v, dict) and "score" in v
+    ]
     avg_conf = round(sum(numeric_scores) / len(numeric_scores), 2) if numeric_scores else 0
+
     return {
         "File Name": data.get("file_name", ""),
         "Bank Name": clean_text(data["bank_name"]["answer"]),
@@ -76,20 +81,20 @@ def clean_extracted_data(data):
     }
 
 # ----------------------------
-# Plots
+# Create meaningful plots
 # ----------------------------
 def create_meaningful_plots(df):
     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
     fig.tight_layout(pad=4)
 
-    # Total Amount Due per Bank
+    # 1. Total Amount Due per Bank
     bank_totals = df.groupby("Bank Name")["Total Amount Due"].sum().sort_values(ascending=False)
     bank_totals.plot(kind="bar", color="#4F81BD", edgecolor="black", ax=axes[0,0])
     axes[0,0].set_title("Total Amount Due per Bank")
     axes[0,0].set_ylabel("Amount (₹)")
     axes[0,0].grid(axis='y', linestyle='--', alpha=0.7)
 
-    # Monthly Spending Trends
+    # 2. Monthly Spending Trends
     df['Month'] = pd.to_datetime(df['Payment Due Date'], errors='coerce').dt.to_period('M')
     monthly_total = df.groupby('Month')["Total Amount Due"].sum()
     monthly_total.plot(kind="line", marker='o', color="#FF7F0E", ax=axes[0,1])
@@ -99,17 +104,17 @@ def create_meaningful_plots(df):
     axes[0,1].grid(True, linestyle='--', alpha=0.5)
     axes[0,1].tick_params(axis='x', rotation=45)
 
-    # Payment Timeliness Distribution
+    # 3. Payment Timeliness (Early/Mid/Late Month)
     due_days = pd.to_datetime(df['Payment Due Date'], errors='coerce').dt.day
     bins = [0,10,20,31]
     labels = ["Early (1-10)", "Mid (11-20)", "Late (21-31)"]
     df['Due Period'] = pd.cut(due_days, bins=bins, labels=labels, include_lowest=True)
     due_period_counts = df['Due Period'].value_counts().reindex(labels)
-    due_period_counts.plot(kind="pie", autopct='%1.1f%%', startangle=90, ax=axes[0,2], colors=["#2CA02C","#98DF8A","#2CA02C"])
-    axes[0,2].set_title("Payment Due Period Distribution")
+    due_period_counts.plot(kind="pie", autopct='%1.1f%%', colors=["#2CA02C","#98DF8A","#D0F0C0"], ax=axes[0,2])
+    axes[0,2].set_title("Payment Due Distribution")
     axes[0,2].set_ylabel("")
 
-    # High-Value Statements per Bank
+    # 4. High-Value Statements per Bank (> ₹50,000)
     high_value_threshold = 50000
     high_value_df = df[df['Total Amount Due'] > high_value_threshold]
     axes[1,0].scatter(high_value_df["Bank Name"], high_value_df["Total Amount Due"], color="#D62728", s=100)
@@ -118,7 +123,7 @@ def create_meaningful_plots(df):
     axes[1,0].set_ylabel("Amount (₹)")
     axes[1,0].tick_params(axis='x', rotation=45)
 
-    # Top 5 Cards by Average Amount
+    # 5. Top 5 Cards by Average Amount
     top5_cards = df.groupby("Card Last 4")["Total Amount Due"].mean().sort_values(ascending=False).head(5)
     top5_cards.plot(kind="bar", color="#17BECF", edgecolor="black", ax=axes[1,1])
     axes[1,1].set_title("Top 5 Cards by Average Amount")
@@ -126,7 +131,7 @@ def create_meaningful_plots(df):
     axes[1,1].set_xlabel("Card Last 4")
     axes[1,1].tick_params(axis='x', rotation=45)
 
-    # Number of Statements per Bank
+    # 6. Number of Statements per Bank
     statements_per_bank = df.groupby("Bank Name").size().sort_values(ascending=False)
     statements_per_bank.plot(kind="bar", color="#BCBD22", edgecolor="black", ax=axes[1,2])
     axes[1,2].set_title("Number of Statements per Bank")
@@ -138,7 +143,7 @@ def create_meaningful_plots(df):
     return fig
 
 # ----------------------------
-# PDF Generation (3 pages)
+# PDF Generator
 # ----------------------------
 def generate_pdf(df, fig):
     buffer = BytesIO()
@@ -149,12 +154,8 @@ def generate_pdf(df, fig):
 
     # --- Page 1: Table ---
     title = Paragraph("Credit Card Statement Extraction Report", styles['Title'])
-    elements.append(title)
-    elements.append(Spacer(1, 15))
-
-    table_title = Paragraph("📋 Extracted Data Table", styles['Heading2'])
-    elements.append(table_title)
-    elements.append(Spacer(1, 10))
+    date_text = Paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M')}", styles['Normal'])
+    elements += [title, Spacer(1, 10), date_text, Spacer(1, 20)]
 
     data = [df.columns.tolist()] + df.values.tolist()
     wrapped_data = []
@@ -162,7 +163,10 @@ def generate_pdf(df, fig):
         wrapped_row = [Paragraph(str(cell), styles['Normal']) for cell in row]
         wrapped_data.append(wrapped_row)
 
-    col_widths = [720/len(df.columns)]*len(df.columns)
+    total_width = 10.5 * 72
+    col_width = total_width / len(df.columns)
+    col_widths = [col_width]*len(df.columns)
+
     table = Table(wrapped_data, colWidths=col_widths, hAlign='CENTER')
     table.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#4F81BD")),
@@ -179,9 +183,6 @@ def generate_pdf(df, fig):
     elements.append(PageBreak())
 
     # --- Page 2: Plots ---
-    plots_title = Paragraph("📈 Data Visualizations", styles['Heading2'])
-    elements.append(plots_title)
-    elements.append(Spacer(1, 10))
     fig_buffer = BytesIO()
     fig.savefig(fig_buffer, format='PNG', dpi=150, bbox_inches='tight')
     fig_buffer.seek(0)
@@ -192,7 +193,7 @@ def generate_pdf(df, fig):
     elements.append(PageBreak())
 
     # --- Page 3: Useful Info ---
-    info_title = Paragraph("📌 Summary, Terms & Classification Criteria", styles['Heading2'])
+    info_title = Paragraph("📌 Useful Information / Summary", styles['Heading2'])
     elements.append(info_title)
     elements.append(Spacer(1, 10))
 
@@ -206,6 +207,7 @@ def generate_pdf(df, fig):
     top_bank = bank_totals.idxmax() if not bank_totals.empty else "N/A"
     top_card = df.groupby("Card Last 4")["Total Amount Due"].mean().idxmax() if not df.empty else "N/A"
 
+    # Info / Summary
     summary_text = f"""
     Number of statements processed: {num_statements}<br/>
     Number of unique banks: {num_banks}<br/>
@@ -215,26 +217,32 @@ def generate_pdf(df, fig):
     Bank with highest total due: {top_bank}<br/>
     Card with highest average due: {top_card}<br/>
     """
+    elements.append(Paragraph(summary_text, styles['Normal']))
+    elements.append(Spacer(1, 15))
 
+    # Classification Criteria
+    criteria_title = Paragraph("🗂 Classification Criteria", styles['Heading3'])
+    elements.append(criteria_title)
+    elements.append(Spacer(1, 5))
+    classification_text = """
+    - Early / Mid / Late month payment due dates.<br/>
+    - High-value statements (> ₹50,000).<br/>
+    - Top 5 cards by average due amount.<br/>
+    """
+    elements.append(Paragraph(classification_text, styles['Normal']))
+    elements.append(Spacer(1, 15))
+
+    # Terms & Conditions
+    terms_title = Paragraph("📃 Terms & Conditions", styles['Heading3'])
+    elements.append(terms_title)
+    elements.append(Spacer(1, 5))
     terms_text = """
     1. This report is auto-generated based on uploaded PDFs.<br/>
     2. Verify extracted amounts before making financial decisions.<br/>
     3. High-value statements indicate significant expenditures.<br/>
     4. Ensure secure handling of sensitive card information.<br/>
     """
-
-    classification_text = """
-    Classification Criteria:<br/>
-    - Early / Mid / Late month payment due dates.<br/>
-    - High-value statements (> ₹50,000).<br/>
-    - Top 5 cards by average due amount.<br/>
-    """
-
-    elements.append(Paragraph(summary_text, styles['Normal']))
-    elements.append(Spacer(1, 10))
     elements.append(Paragraph(terms_text, styles['Normal']))
-    elements.append(Spacer(1, 10))
-    elements.append(Paragraph(classification_text, styles['Normal']))
 
     doc.build(elements)
     buffer.seek(0)
