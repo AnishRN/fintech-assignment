@@ -3,6 +3,11 @@ from PyPDF2 import PdfReader
 import re
 from transformers import pipeline
 import pandas as pd
+from io import BytesIO
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
 
 # ----------------------------
 # Helper functions
@@ -66,6 +71,41 @@ def clean_extracted_data(data):
     }
 
 # ----------------------------
+# PDF Generator
+# ----------------------------
+def generate_pdf(dataframe):
+    """Generates a PDF from the extracted dataframe."""
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    elements = []
+
+    styles = getSampleStyleSheet()
+    title = Paragraph("Credit Card Statement Extraction Summary", styles['Title'])
+    elements.append(title)
+    elements.append(Spacer(1, 12))
+
+    # Convert DataFrame to list of lists for table
+    data = [dataframe.columns.tolist()] + dataframe.values.tolist()
+
+    # Create table
+    table = Table(data, hAlign='LEFT')
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4F81BD")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 11),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 10),
+        ("BACKGROUND", (0, 1), (-1, -1), colors.whitesmoke),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+    ]))
+    elements.append(table)
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+# ----------------------------
 # Streamlit UI
 # ----------------------------
 st.set_page_config(page_title="Credit Card Statement Extractor", page_icon="💳", layout="wide")
@@ -94,11 +134,20 @@ if uploaded_files:
     df = pd.DataFrame(all_extracted_data)
     st.dataframe(df.style.format({"Total Amount Due": "${}"}))
 
-    # Download combined CSV
+    # Download as CSV
     csv_file = df.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="⬇️ Download All Extracted Data as CSV",
         data=csv_file,
         file_name="all_credit_statements_data.csv",
         mime="text/csv",
+    )
+
+    # Download as PDF
+    pdf_buffer = generate_pdf(df)
+    st.download_button(
+        label="📄 Download All Extracted Data as PDF",
+        data=pdf_buffer,
+        file_name="all_credit_statements_data.pdf",
+        mime="application/pdf",
     )
