@@ -104,20 +104,20 @@ def create_meaningful_plots(df):
     axes[0,1].grid(True, linestyle='--', alpha=0.5)
     axes[0,1].tick_params(axis='x', rotation=45)
 
-    # 3. Payment Timeliness (Early/Mid/Late Month)
+    # 3. Payment Timeliness Distribution
     due_days = pd.to_datetime(df['Payment Due Date'], errors='coerce').dt.day
     bins = [0,10,20,31]
     labels = ["Early (1-10)", "Mid (11-20)", "Late (21-31)"]
     df['Due Period'] = pd.cut(due_days, bins=bins, labels=labels, include_lowest=True)
     due_period_counts = df['Due Period'].value_counts().reindex(labels)
-    due_period_counts.plot(kind="pie", autopct='%1.1f%%', colors=["#2CA02C","#98DF8A","#D0F0C0"], ax=axes[0,2])
-    axes[0,2].set_title("Payment Due Distribution")
+    due_period_counts.plot(kind="pie", autopct='%1.1f%%', startangle=90, colors=["#2CA02C","#FF7F0E","#D62728"], ax=axes[0,2])
     axes[0,2].set_ylabel("")
+    axes[0,2].set_title("Payment Due Distribution")
 
-    # 4. High-Value Statements per Bank (> ₹50,000)
+    # 4. High-Value Statements (> 50,000)
     high_value_threshold = 50000
     high_value_df = df[df['Total Amount Due'] > high_value_threshold]
-    axes[1,0].scatter(high_value_df["Bank Name"], high_value_df["Total Amount Due"], color="#D62728", s=100)
+    axes[1,0].bar(high_value_df["Bank Name"], high_value_df["Total Amount Due"], color="#D62728", edgecolor="black")
     axes[1,0].set_title(f"High-Value Statements per Bank (> ₹{high_value_threshold})")
     axes[1,0].set_xlabel("Bank Name")
     axes[1,0].set_ylabel("Amount (₹)")
@@ -145,7 +145,7 @@ def create_meaningful_plots(df):
 # ----------------------------
 # PDF Generator
 # ----------------------------
-def generate_pdf(df, fig):
+def generate_pdf(df, summary_text, fig):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(letter),
                             rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
@@ -154,8 +154,7 @@ def generate_pdf(df, fig):
 
     # --- Page 1: Table ---
     title = Paragraph("Credit Card Statement Extraction Report", styles['Title'])
-    date_text = Paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M')}", styles['Normal'])
-    elements += [title, Spacer(1, 10), date_text, Spacer(1, 20)]
+    elements += [title, Spacer(1, 10)]
 
     data = [df.columns.tolist()] + df.values.tolist()
     wrapped_data = []
@@ -197,55 +196,61 @@ def generate_pdf(df, fig):
     elements.append(info_title)
     elements.append(Spacer(1, 10))
 
+    # Extract summary info from df
     total_due_sum = df["Total Amount Due"].sum()
     avg_confidence = df["Avg Confidence (%)"].mean()
     num_statements = len(df)
     num_banks = df["Bank Name"].nunique()
     high_value_threshold = 50000
     high_value_count = (df["Total Amount Due"] > high_value_threshold).sum()
-    bank_totals = df.groupby("Bank Name")["Total Amount Due"].sum()
-    top_bank = bank_totals.idxmax() if not bank_totals.empty else "N/A"
-    top_card = df.groupby("Card Last 4")["Total Amount Due"].mean().idxmax() if not df.empty else "N/A"
+    top_bank = df.groupby("Bank Name")["Total Amount Due"].sum().idxmax()
+    top_card = df.groupby("Card Last 4")["Total Amount Due"].mean().idxmax()
 
-    # Info / Summary
+    # Summary
+    summary_title = Paragraph("<b>Summary</b>", styles['Heading3'])
+    elements.append(summary_title)
+    elements.append(Spacer(1, 5))
     summary_text = f"""
-    Number of statements processed: {num_statements}<br/>
-    Number of unique banks: {num_banks}<br/>
-    Total Amount Due across all statements: ₹{total_due_sum:,.2f}<br/>
-    Average QA confidence: {avg_confidence:.2f}%<br/>
-    Number of high-value statements (> ₹{high_value_threshold}): {high_value_count}<br/>
-    Bank with highest total due: {top_bank}<br/>
-    Card with highest average due: {top_card}<br/>
-    """
-    elements.append(Paragraph(summary_text, styles['Normal']))
-    elements.append(Spacer(1, 15))
+Number of statements processed: {num_statements}
+Number of unique banks: {num_banks}
+Total Amount Due across all statements: ₹{total_due_sum:,.2f}
+Average QA confidence: {avg_confidence:.2f}%
+Number of high-value statements (> ₹{high_value_threshold}): {high_value_count}
+Bank with highest total due: {top_bank}
+Card with highest average due: {top_card}
+"""
+    for line in summary_text.strip().split("\n"):
+        elements.append(Paragraph(line, styles['Normal']))
+        elements.append(Spacer(1, 2))
+    elements.append(Spacer(1, 10))
 
     # Classification Criteria
-    criteria_title = Paragraph("🗂 Classification Criteria", styles['Heading3'])
+    criteria_title = Paragraph("<b>Classification Criteria</b>", styles['Heading3'])
     elements.append(criteria_title)
     elements.append(Spacer(1, 5))
-    classification_text = """
-    - **Early / Mid / Late Month Payment Due Dates**: 
-      - Early: Days 1–10 of the month
-      - Mid: Days 11–20 of the month
-      - Late: Days 21–31 of the month
-    - **High-Value Statements**: Any statement with Total Amount Due > ₹50,000
-    - **Top 5 Cards by Average Due Amount**: Cards with the 5 highest average Total Amount Due across all statements
-    """
-    elements.append(Paragraph(classification_text, styles['Normal']))
-    elements.append(Spacer(1, 15))
+    classification_lines = [
+        "<b>Early / Mid / Late Month Payment Due Dates:</b> Early: Days 1–10, Mid: Days 11–20, Late: Days 21–31",
+        "<b>High-Value Statements:</b> Any statement with Total Amount Due > ₹50,000",
+        "<b>Top 5 Cards by Average Due Amount:</b> Cards with the 5 highest average Total Amount Due across all statements"
+    ]
+    for line in classification_lines:
+        elements.append(Paragraph(line, styles['Normal']))
+        elements.append(Spacer(1, 2))
+    elements.append(Spacer(1, 10))
 
     # Terms & Conditions
-    terms_title = Paragraph("📃 Terms & Conditions", styles['Heading3'])
+    terms_title = Paragraph("<b>Terms & Conditions</b>", styles['Heading3'])
     elements.append(terms_title)
     elements.append(Spacer(1, 5))
-    terms_text = """
-    1. This report is auto-generated based on uploaded PDFs.<br/>
-    2. Verify extracted amounts before making financial decisions.<br/>
-    3. High-value statements indicate significant expenditures.<br/>
-    4. Ensure secure handling of sensitive card information.<br/>
-    """
-    elements.append(Paragraph(terms_text, styles['Normal']))
+    terms_lines = [
+        "1. This report is auto-generated based on uploaded PDFs.",
+        "2. Verify extracted amounts before making financial decisions.",
+        "3. High-value statements indicate significant expenditures.",
+        "4. Ensure secure handling of sensitive card information."
+    ]
+    for line in terms_lines:
+        elements.append(Paragraph(line, styles['Normal']))
+        elements.append(Spacer(1, 2))
 
     doc.build(elements)
     buffer.seek(0)
@@ -299,29 +304,27 @@ if uploaded_files:
     # Downloads
     csv_file = df.to_csv(index=False).encode('utf-8')
     st.download_button("⬇️ Download Extracted Data as CSV", csv_file, "credit_statements_data.csv", "text/csv")
-    pdf_buffer = generate_pdf(df, fig)
+    pdf_buffer = generate_pdf(df, summary_text, fig)
     st.download_button("📄 Download Full Report as PDF", pdf_buffer, "credit_statements_report.pdf", "application/pdf")
 
-    # Chatbot-style Q&A
+    # Chatbot Q&A
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
     st.subheader("💬 Ask Your Statements (Chatbot Mode)")
     user_question = st.text_input("Type your question here and press Enter:")
 
-    if user_question and full_text:
-        with st.spinner("Thinking..."):
-            try:
-                answer = qa_pipeline(question=user_question, context=full_text)
-                response_text = f"{answer.get('answer','Not found')} (Confidence: {round(answer.get('score',0)*100,2)}%)"
-                st.session_state.chat_history.append({"user": user_question, "bot": response_text})
-            except Exception as e:
-                st.error(f"Error: {str(e)}")
+    if user_question:
+        if full_text:
+            with st.spinner("Thinking..."):
+                try:
+                    answer = qa_pipeline(question=user_question, context=full_text)
+                    response_text = f"{answer.get('answer','Not found')} (Confidence: {round(answer.get('score',0)*100,2)}%)"
+                    st.session_state.chat_history.append({"user": user_question, "bot": response_text})
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
 
-    # Display chat history (latest on top)
+    # Display chat history
     for chat in st.session_state.chat_history[::-1]:
         st.markdown(f"**You:** {chat['user']}")
         st.markdown(f"**Bot:** {chat['bot']}")
-
-
-
