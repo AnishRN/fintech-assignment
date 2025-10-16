@@ -83,7 +83,7 @@ def clean_extracted_data(data):
 # ----------------------------
 # Create meaningful insight plots
 # ----------------------------
-def create_meaningful_insight_plots(df):
+def create_insightful_plots(df):
     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
     fig.tight_layout(pad=4)
 
@@ -94,34 +94,28 @@ def create_meaningful_insight_plots(df):
     axes[0,0].set_ylabel("Amount (₹)")
     axes[0,0].grid(axis='y', linestyle='--', alpha=0.7)
 
-    # 2. Average Statement Amount by Billing Cycle Month
-    df['Billing Start Month'] = pd.to_datetime(df['Billing Cycle'], errors='coerce').dt.month
-    month_avg = df.groupby('Billing Start Month')["Total Amount Due"].mean()
-    month_avg.plot(kind='bar', color="#FF7F0E", edgecolor="black", ax=axes[0,1])
-    axes[0,1].set_title("Average Statement Amount by Billing Start Month")
-    axes[0,1].set_xlabel("Month")
+    # 2. Average Payment Amount per Card
+    card_avg = df.groupby("Card Last 4")["Total Amount Due"].mean().sort_values(ascending=False)
+    card_avg.plot(kind="bar", color="#FF7F0E", edgecolor="black", ax=axes[0,1])
+    axes[0,1].set_title("Average Amount per Card")
     axes[0,1].set_ylabel("Average Amount (₹)")
-    axes[0,1].tick_params(axis='x', rotation=0)
-    axes[0,1].grid(axis='y', linestyle='--', alpha=0.5)
+    axes[0,1].set_xlabel("Card Last 4")
+    axes[0,1].tick_params(axis='x', rotation=45)
 
-    # 3. Distribution of Payment Amounts (Histogram by Ranges)
-    bins = [0, 10000, 50000, df["Total Amount Due"].max()+1]
-    labels = ['Small (<10k)', 'Medium (10k-50k)', 'High (>50k)']
-    df['Amount Range'] = pd.cut(df['Total Amount Due'], bins=bins, labels=labels, include_lowest=True)
-    amount_counts = df['Amount Range'].value_counts().reindex(labels)
-    amount_counts.plot(kind='bar', color="#2CA02C", edgecolor="black", ax=axes[0,2])
-    axes[0,2].set_title("Distribution of Payment Amounts")
-    axes[0,2].set_xlabel("Amount Range")
+    # 3. Payment Due Date Distribution
+    df['Due Day'] = pd.to_datetime(df['Payment Due Date'], errors='coerce').dt.day
+    df['Due Day'].plot(kind='hist', bins=31, rwidth=0.8, color="#2CA02C", ax=axes[0,2])
+    axes[0,2].set_title("Payment Due Date Distribution")
+    axes[0,2].set_xlabel("Day of Month")
     axes[0,2].set_ylabel("Number of Statements")
 
-    # 4. Bank-wise High-Value Statement Counts (> ₹50k)
-    high_value_threshold = 50000
-    high_value_counts = df[df['Total Amount Due'] > high_value_threshold].groupby("Bank Name").size()
-    high_value_counts.plot(kind='bar', color="#D62728", edgecolor="black", ax=axes[1,0])
-    axes[1,0].set_title(f"High-Value Statement Counts per Bank (> ₹{high_value_threshold})")
-    axes[1,0].set_xlabel("Bank Name")
-    axes[1,0].set_ylabel("Number of Statements")
-    axes[1,0].tick_params(axis='x', rotation=45)
+    # 4. High-Value Statements per Bank
+    threshold = 50000
+    high_value_counts = df[df['Total Amount Due'] > threshold].groupby("Bank Name").size().sort_values()
+    high_value_counts.plot(kind='barh', color="#D62728", edgecolor="black", ax=axes[1,0])
+    axes[1,0].set_title(f"High-Value Statements per Bank (>₹{threshold})")
+    axes[1,0].set_xlabel("Number of Statements")
+    axes[1,0].set_ylabel("Bank Name")
 
     # 5. Top 5 Cards by Average Amount
     top5_cards = df.groupby("Card Last 4")["Total Amount Due"].mean().sort_values(ascending=False).head(5)
@@ -141,6 +135,7 @@ def create_meaningful_insight_plots(df):
 
     plt.tight_layout()
     return fig
+
 
 # ----------------------------
 # PDF Generator
@@ -264,3 +259,4 @@ if user_question and uploaded_files:
         st.write(f"*Confidence:* {round(result.get('score',0)*100,2)}%")
     except Exception as e:
         st.error(f"Error processing question: {e}")
+
