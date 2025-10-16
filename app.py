@@ -81,7 +81,7 @@ def clean_extracted_data(data):
     }
 
 # ----------------------------
-# Create diverse meaningful plots
+# Create meaningful plots
 # ----------------------------
 def create_meaningful_plots(df):
     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
@@ -142,7 +142,6 @@ def create_meaningful_plots(df):
 
     plt.tight_layout()
     return fig
-
 
 # ----------------------------
 # PDF Generator
@@ -240,7 +239,7 @@ if uploaded_files:
     st.markdown(summary_text)
 
     # Plots
-    fig = create_diverse_plots(df)
+    fig = create_meaningful_plots(df)
     st.pyplot(fig)
 
     # Downloads
@@ -272,4 +271,3 @@ if uploaded_files:
     for chat in st.session_state.chat_history[::-1]:
         st.markdown(f"**You:** {chat['user']}")
         st.markdown(f"**Bot:** {chat['bot']}")
-
