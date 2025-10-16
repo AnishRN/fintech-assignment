@@ -201,8 +201,8 @@ uploaded_files = st.file_uploader(
 if uploaded_files:
     qa_pipeline = load_qa_pipeline()
     all_extracted_data = []
+    full_text = ""  # For chatbot context
 
-    full_text = ""  # for user Q&A
     for pdf_file in uploaded_files:
         with st.spinner(f"Processing {pdf_file.name}..."):
             pdf_text = extract_text_from_pdf(pdf_file)
@@ -238,19 +238,25 @@ if uploaded_files:
     st.download_button("📄 Download Full Report as PDF", pdf_buffer, "credit_statements_report.pdf", "application/pdf")
 
     # ----------------------------
-    # User Q&A Section
+    # Chatbot-style Q&A
     # ----------------------------
-    st.subheader("❓ Ask Questions About Your Statements")
-    user_question = st.text_input("Type your question here (e.g., 'What is the total due for Bank X?')")
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+
+    st.subheader("💬 Ask Your Statements (Chatbot Mode)")
+    user_question = st.text_input("Type your question here and press Enter:")
 
     if user_question:
         if full_text:
-            with st.spinner("Finding answer..."):
+            with st.spinner("Thinking..."):
                 try:
                     answer = qa_pipeline(question=user_question, context=full_text)
-                    st.success(f"**Answer:** {answer.get('answer', 'Not found')}")
-                    st.info(f"Confidence: {round(answer.get('score',0)*100,2)}%")
+                    response_text = f"{answer.get('answer','Not found')} (Confidence: {round(answer.get('score',0)*100,2)}%)"
+                    st.session_state.chat_history.append({"user": user_question, "bot": response_text})
                 except Exception as e:
                     st.error(f"Error: {str(e)}")
-        else:
-            st.warning("Please upload PDF statements first.")
+
+    # Display chat history (latest on top)
+    for chat in st.session_state.chat_history[::-1]:
+        st.markdown(f"**You:** {chat['user']}")
+        st.markdown(f"**Bot:** {chat['bot']}")
