@@ -81,43 +81,50 @@ def clean_extracted_data(data):
     }
 
 # ----------------------------
-# Create meaningful insight plots
+# Create meaningful plots
 # ----------------------------
-def create_meaningful_insight_plots(df):
+def create_meaningful_plots(df):
     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
     fig.tight_layout(pad=4)
 
-    # 1. Total Amount Due per Bank
+    # 1. Total Amount Due per Bank - unchanged
     bank_totals = df.groupby("Bank Name")["Total Amount Due"].sum().sort_values(ascending=False)
     bank_totals.plot(kind="bar", color="#4F81BD", edgecolor="black", ax=axes[0,0])
     axes[0,0].set_title("Total Amount Due per Bank")
     axes[0,0].set_ylabel("Amount (₹)")
     axes[0,0].grid(axis='y', linestyle='--', alpha=0.7)
 
-    # 2. Average Payment Amount per Card
-    card_avg = df.groupby("Card Last 4")["Total Amount Due"].mean().sort_values(ascending=False)
-    card_avg.plot(kind="bar", color="#FF7F0E", edgecolor="black", ax=axes[0,1])
-    axes[0,1].set_title("Average Amount per Card")
-    axes[0,1].set_ylabel("Average Amount (₹)")
-    axes[0,1].set_xlabel("Card Last 4")
+    # 2. Monthly Spending Trends (Total per Month)
+    df['Month'] = pd.to_datetime(df['Payment Due Date'], errors='coerce').dt.to_period('M')
+    monthly_total = df.groupby('Month')["Total Amount Due"].sum()
+    monthly_total.plot(kind="line", marker='o', color="#FF7F0E", ax=axes[0,1])
+    axes[0,1].set_title("Total Amount Due per Month")
+    axes[0,1].set_ylabel("Total Amount (₹)")
+    axes[0,1].set_xlabel("Month")
+    axes[0,1].grid(True, linestyle='--', alpha=0.5)
     axes[0,1].tick_params(axis='x', rotation=45)
 
-    # 3. Payment Due Date Distribution
-    df['Due Day'] = pd.to_datetime(df['Payment Due Date'], errors='coerce').dt.day
-    df['Due Day'].plot(kind='hist', bins=31, rwidth=0.8, color="#2CA02C", ax=axes[0,2])
-    axes[0,2].set_title("Payment Due Date Distribution")
-    axes[0,2].set_xlabel("Day of Month")
+    # 3. Payment Timeliness (Early/Mid/Late Month)
+    due_days = pd.to_datetime(df['Payment Due Date'], errors='coerce').dt.day
+    bins = [0,10,20,31]
+    labels = ["Early (1-10)", "Mid (11-20)", "Late (21-31)"]
+    df['Due Period'] = pd.cut(due_days, bins=bins, labels=labels, include_lowest=True)
+    due_period_counts = df['Due Period'].value_counts().reindex(labels)
+    due_period_counts.plot(kind="bar", color="#2CA02C", edgecolor="black", ax=axes[0,2])
+    axes[0,2].set_title("Payment Due Distribution")
     axes[0,2].set_ylabel("Number of Statements")
+    axes[0,2].set_xlabel("Period of Month")
 
-    # 4. High-Value Statements per Bank
-    threshold = 50000
-    high_value_counts = df[df['Total Amount Due'] > threshold].groupby("Bank Name").size().sort_values()
-    high_value_counts.plot(kind='barh', color="#D62728", edgecolor="black", ax=axes[1,0])
-    axes[1,0].set_title(f"High-Value Statements per Bank (>₹{threshold})")
-    axes[1,0].set_xlabel("Number of Statements")
-    axes[1,0].set_ylabel("Bank Name")
+    # 4. High-Value Statements per Bank (> ₹50,000)
+    high_value_threshold = 50000
+    high_value_df = df[df['Total Amount Due'] > high_value_threshold]
+    axes[1,0].scatter(high_value_df["Bank Name"], high_value_df["Total Amount Due"], color="#D62728", s=100)
+    axes[1,0].set_title(f"High-Value Statements per Bank (> ₹{high_value_threshold})")
+    axes[1,0].set_xlabel("Bank Name")
+    axes[1,0].set_ylabel("Amount (₹)")
+    axes[1,0].tick_params(axis='x', rotation=45)
 
-    # 5. Top 5 Cards by Average Amount
+    # 5. Top 5 Cards by Average Amount - unchanged
     top5_cards = df.groupby("Card Last 4")["Total Amount Due"].mean().sort_values(ascending=False).head(5)
     top5_cards.plot(kind="bar", color="#17BECF", edgecolor="black", ax=axes[1,1])
     axes[1,1].set_title("Top 5 Cards by Average Amount")
@@ -125,7 +132,7 @@ def create_meaningful_insight_plots(df):
     axes[1,1].set_xlabel("Card Last 4")
     axes[1,1].tick_params(axis='x', rotation=45)
 
-    # 6. Number of Statements per Bank
+    # 6. Number of Statements per Bank - unchanged
     statements_per_bank = df.groupby("Bank Name").size().sort_values(ascending=False)
     statements_per_bank.plot(kind="bar", color="#BCBD22", edgecolor="black", ax=axes[1,2])
     axes[1,2].set_title("Number of Statements per Bank")
@@ -135,7 +142,6 @@ def create_meaningful_insight_plots(df):
 
     plt.tight_layout()
     return fig
-
 
 # ----------------------------
 # PDF Generator
@@ -206,59 +212,62 @@ uploaded_files = st.file_uploader(
 if uploaded_files:
     qa_pipeline = load_qa_pipeline()
     all_extracted_data = []
+    full_text = ""  # For chatbot context
 
     for pdf_file in uploaded_files:
         with st.spinner(f"Processing {pdf_file.name}..."):
             pdf_text = extract_text_from_pdf(pdf_file)
+            full_text += pdf_text + " "
             extracted_data = extract_fields_with_qa(pdf_text, qa_pipeline)
             extracted_data["file_name"] = pdf_file.name
             cleaned_data = clean_extracted_data(extracted_data)
             all_extracted_data.append(cleaned_data)
 
     df = pd.DataFrame(all_extracted_data)
+    df["Total Amount Due"] = df["Total Amount Due"].astype(float)
+    df["Avg Confidence (%)"] = df["Avg Confidence (%)"].astype(float)
 
-    st.subheader("Extracted Information for All PDFs")
-    st.dataframe(df.style.format({"Total Amount Due": "₹{:.2f}", "Avg Confidence (%)": "{:.2f}%"}))
+    # Display table
+    st.subheader("📊 Extracted Information")
+    st.dataframe(df.style.format({"Total Amount Due": "₹{:,.2f}"}))
 
-    # Download CSV
-    csv_file = df.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="⬇️ Download CSV",
-        data=csv_file,
-        file_name="credit_statements_data.csv",
-        mime="text/csv"
-    )
+    # Summary
+    total_due_sum = df["Total Amount Due"].sum()
+    avg_confidence = df["Avg Confidence (%)"].mean()
+    summary_text = f"Processed {len(df)} statements. Total due: ₹{total_due_sum:,.2f}. Average confidence: {avg_confidence:.2f}%."
+    st.subheader("📈 Summary Insights")
+    st.markdown(summary_text)
 
-    # Generate and display plots
-    fig = create_meaningful_insight_plots(df)
-    st.subheader("Insights from Data")
+    # Plots
+    fig = create_meaningful_plots(df)
     st.pyplot(fig)
 
-    # Generate PDF
-    summary_text = f"Processed {len(df)} statements from {len(df['Bank Name'].unique())} banks."
+    # Downloads
+    csv_file = df.to_csv(index=False).encode('utf-8')
+    st.download_button("⬇️ Download Extracted Data as CSV", csv_file, "credit_statements_data.csv", "text/csv")
     pdf_buffer = generate_pdf(df, summary_text, fig)
-    st.download_button(
-        label="⬇️ Download PDF Report",
-        data=pdf_buffer,
-        file_name="credit_statements_report.pdf",
-        mime="application/pdf"
-    )
+    st.download_button("📄 Download Full Report as PDF", pdf_buffer, "credit_statements_report.pdf", "application/pdf")
 
-# ----------------------------
-# Simple Chatbot-style Q&A
-# ----------------------------
-st.subheader("💬 Ask Questions About the Uploaded Statements")
-user_question = st.text_input("Type your question here:")
+    # ----------------------------
+    # Chatbot-style Q&A
+    # ----------------------------
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
 
-if user_question and uploaded_files:
-    qa_pipeline = load_qa_pipeline()
-    combined_text = " ".join(extract_text_from_pdf(f) for f in uploaded_files)
-    try:
-        result = qa_pipeline(question=user_question, context=combined_text)
-        st.write(f"**Answer:** {result.get('answer', 'Not found')}")
-        st.write(f"*Confidence:* {round(result.get('score',0)*100,2)}%")
-    except Exception as e:
-        st.error(f"Error processing question: {e}")
+    st.subheader("💬 Ask Your Statements (Chatbot Mode)")
+    user_question = st.text_input("Type your question here and press Enter:")
 
+    if user_question:
+        if full_text:
+            with st.spinner("Thinking..."):
+                try:
+                    answer = qa_pipeline(question=user_question, context=full_text)
+                    response_text = f"{answer.get('answer','Not found')} (Confidence: {round(answer.get('score',0)*100,2)}%)"
+                    st.session_state.chat_history.append({"user": user_question, "bot": response_text})
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
 
-
+    # Display chat history (latest on top)
+    for chat in st.session_state.chat_history[::-1]:
+        st.markdown(f"**You:** {chat['user']}")
+        st.markdown(f"**Bot:** {chat['bot']}")
