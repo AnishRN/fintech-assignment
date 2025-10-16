@@ -83,7 +83,7 @@ def clean_extracted_data(data):
 # ----------------------------
 # Create meaningful plots
 # ----------------------------
-def create_diverse_plots(df):
+def create_meaningful_plots(df):
     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
     fig.tight_layout(pad=4)
 
@@ -268,5 +268,6 @@ if uploaded_files:
     for chat in st.session_state.chat_history[::-1]:
         st.markdown(f"**You:** {chat['user']}")
         st.markdown(f"**Bot:** {chat['bot']}")
+
 
 
