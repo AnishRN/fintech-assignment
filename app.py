@@ -81,52 +81,60 @@ def clean_extracted_data(data):
     }
 
 # ----------------------------
-# Create 6 meaningful plots
+# Create meaningful plots
 # ----------------------------
 def create_meaningful_plots(df):
     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
     fig.tight_layout(pad=4)
 
-    # 1. Total Due per Bank
-    bank_totals = df.groupby("Bank Name")["Total Amount Due"].sum()
+    # 1. Total Amount Due per Bank
+    bank_totals = df.groupby("Bank Name")["Total Amount Due"].sum().sort_values(ascending=False)
     bank_totals.plot(kind="bar", color="#4F81BD", edgecolor="black", ax=axes[0,0])
     axes[0,0].set_title("Total Amount Due per Bank")
     axes[0,0].set_ylabel("Amount (₹)")
     axes[0,0].grid(axis='y', linestyle='--', alpha=0.7)
 
-    # 2. Share of Total Due by Bank
-    bank_totals.plot(kind="pie", autopct='%1.1f%%', startangle=140, ax=axes[0,1], colors=plt.cm.Paired.colors)
-    axes[0,1].set_ylabel("")
-    axes[0,1].set_title("Share of Total Due by Bank")
+    # 2. Average Statement Amount per Month
+    df['Month'] = pd.to_datetime(df['Payment Due Date'], errors='coerce').dt.to_period('M')
+    monthly_avg = df.groupby('Month')["Total Amount Due"].mean()
+    monthly_avg.plot(kind="line", marker='o', color="#FF7F0E", ax=axes[0,1])
+    axes[0,1].set_title("Average Statement Amount per Month")
+    axes[0,1].set_ylabel("Average Amount (₹)")
+    axes[0,1].set_xlabel("Month")
+    axes[0,1].grid(True, linestyle='--', alpha=0.5)
+    axes[0,1].tick_params(axis='x', rotation=45)
 
-    # 3. Histogram of Statement Amounts
-    df["Total Amount Due"].plot(kind="hist", bins=10, edgecolor='black', color="#FF7F0E", ax=axes[0,2])
-    axes[0,2].set_title("Distribution of Statement Amounts")
-    axes[0,2].set_xlabel("Amount (₹)")
-    axes[0,2].set_ylabel("Count")
+    # 3. Highest and Lowest Statement Amounts per Bank
+    highest_per_bank = df.groupby("Bank Name")["Total Amount Due"].max()
+    lowest_per_bank = df.groupby("Bank Name")["Total Amount Due"].min()
+    axes[0,2].bar(highest_per_bank.index, highest_per_bank.values, color="#2CA02C", alpha=0.7, label="Max")
+    axes[0,2].bar(lowest_per_bank.index, lowest_per_bank.values, color="#D62728", alpha=0.7, label="Min")
+    axes[0,2].set_title("Max & Min Statement Amount per Bank")
+    axes[0,2].set_ylabel("Amount (₹)")
+    axes[0,2].legend()
+    axes[0,2].tick_params(axis='x', rotation=45)
 
-    # 4. Confidence vs Amount
-    axes[1,0].scatter(df["Total Amount Due"], df["Avg Confidence (%)"], color="#2CA02C", alpha=0.7)
-    axes[1,0].set_title("Confidence vs Amount")
-    axes[1,0].set_xlabel("Amount (₹)")
-    axes[1,0].set_ylabel("Avg Confidence (%)")
-    axes[1,0].grid(True, linestyle='--', alpha=0.5)
+    # 4. Distribution of Payment Due Dates
+    due_days = pd.to_datetime(df['Payment Due Date'], errors='coerce').dt.day
+    axes[1,0].hist(due_days.dropna(), bins=15, color="#9467BD", edgecolor="black")
+    axes[1,0].set_title("Distribution of Payment Due Dates")
+    axes[1,0].set_xlabel("Day of Month")
+    axes[1,0].set_ylabel("Count")
 
-    # 5. Statements Due per Month
-    df['Due Month'] = pd.to_datetime(df['Payment Due Date'], errors='coerce').dt.to_period('M')
-    due_month_counts = df.groupby('Due Month').size()
-    due_month_counts.plot(kind="bar", color="#D62728", edgecolor='black', ax=axes[1,1])
-    axes[1,1].set_title("Number of Statements Due per Month")
-    axes[1,1].set_xlabel("Month")
-    axes[1,1].set_ylabel("Count")
+    # 5. Top 5 Cards with Highest Average Amounts
+    top5_cards = df.groupby("Card Last 4")["Total Amount Due"].mean().sort_values(ascending=False).head(5)
+    top5_cards.plot(kind="bar", color="#17BECF", edgecolor="black", ax=axes[1,1])
+    axes[1,1].set_title("Top 5 Cards by Average Amount")
+    axes[1,1].set_ylabel("Average Amount (₹)")
+    axes[1,1].set_xlabel("Card Last 4")
     axes[1,1].tick_params(axis='x', rotation=45)
 
-    # 6. Avg Amount per Card
-    avg_card = df.groupby("Card Last 4")["Total Amount Due"].mean()
-    avg_card.plot(kind="bar", color="#9467BD", edgecolor='black', ax=axes[1,2])
-    axes[1,2].set_title("Average Amount Due per Card")
-    axes[1,2].set_ylabel("Amount (₹)")
-    axes[1,2].set_xlabel("Card Last 4")
+    # 6. Number of Statements per Bank
+    statements_per_bank = df.groupby("Bank Name").size().sort_values(ascending=False)
+    statements_per_bank.plot(kind="bar", color="#BCBD22", edgecolor="black", ax=axes[1,2])
+    axes[1,2].set_title("Number of Statements per Bank")
+    axes[1,2].set_ylabel("Count")
+    axes[1,2].set_xlabel("Bank Name")
     axes[1,2].tick_params(axis='x', rotation=45)
 
     plt.tight_layout()
