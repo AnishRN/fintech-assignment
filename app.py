@@ -94,33 +94,30 @@ def create_meaningful_plots(df):
     axes[0,0].set_ylabel("Amount (₹)")
     axes[0,0].grid(axis='y', linestyle='--', alpha=0.7)
 
-    # 2. Monthly Spending Trends (Total per Month)
-    df['Month'] = pd.to_datetime(df['Payment Due Date'], errors='coerce').dt.to_period('M')
-    monthly_total = df.groupby('Month')["Total Amount Due"].sum()
-    monthly_total.plot(kind="line", marker='o', color="#FF7F0E", ax=axes[0,1])
-    axes[0,1].set_title("Total Amount Due per Month")
-    axes[0,1].set_ylabel("Total Amount (₹)")
-    axes[0,1].set_xlabel("Month")
-    axes[0,1].grid(True, linestyle='--', alpha=0.5)
+    # 2. Average Amount Due per Billing Cycle (Bar Chart)
+    billing_avg = df.groupby("Billing Cycle")["Total Amount Due"].mean().sort_values(ascending=False)
+    billing_avg.plot(kind="bar", color="#FF7F0E", edgecolor="black", ax=axes[0,1])
+    axes[0,1].set_title("Average Amount Due per Billing Cycle")
+    axes[0,1].set_ylabel("Average Amount (₹)")
+    axes[0,1].set_xlabel("Billing Cycle")
     axes[0,1].tick_params(axis='x', rotation=45)
+    axes[0,1].grid(axis='y', linestyle='--', alpha=0.5)
 
-    # 3. Payment Timeliness (Early/Mid/Late Month)
-    due_days = pd.to_datetime(df['Payment Due Date'], errors='coerce').dt.day
-    bins = [0,10,20,31]
-    labels = ["Early (1-10)", "Mid (11-20)", "Late (21-31)"]
-    df['Due Period'] = pd.cut(due_days, bins=bins, labels=labels, include_lowest=True)
-    due_period_counts = df['Due Period'].value_counts().reindex(labels)
-    due_period_counts.plot(kind="bar", color="#2CA02C", edgecolor="black", ax=axes[0,2])
-    axes[0,2].set_title("Payment Due Distribution")
-    axes[0,2].set_ylabel("Number of Statements")
-    axes[0,2].set_xlabel("Period of Month")
+    # 3. Card Distribution per Bank (Stacked Bar Chart)
+    card_dist = df.groupby(["Bank Name", "Card Last 4"]).size().unstack(fill_value=0)
+    card_dist.plot(kind="bar", stacked=True, ax=axes[0,2], cmap="tab20")
+    axes[0,2].set_title("Card Distribution per Bank")
+    axes[0,2].set_ylabel("Number of Cards")
+    axes[0,2].set_xlabel("Bank Name")
+    axes[0,2].tick_params(axis='x', rotation=45)
 
-    # 4. High-Value Statements per Bank (> ₹50,000)
+    # 4. High-Value Payments by Month (Scatter Plot)
+    df['Month'] = pd.to_datetime(df['Payment Due Date'], errors='coerce').dt.to_period('M')
     high_value_threshold = 50000
     high_value_df = df[df['Total Amount Due'] > high_value_threshold]
-    axes[1,0].scatter(high_value_df["Bank Name"], high_value_df["Total Amount Due"], color="#D62728", s=100)
-    axes[1,0].set_title(f"High-Value Statements per Bank (> ₹{high_value_threshold})")
-    axes[1,0].set_xlabel("Bank Name")
+    axes[1,0].scatter(high_value_df['Month'].astype(str), high_value_df['Total Amount Due'], color="#D62728", s=100)
+    axes[1,0].set_title(f"High-Value Payments by Month (> ₹{high_value_threshold})")
+    axes[1,0].set_xlabel("Month")
     axes[1,0].set_ylabel("Amount (₹)")
     axes[1,0].tick_params(axis='x', rotation=45)
 
@@ -271,3 +268,4 @@ if uploaded_files:
     for chat in st.session_state.chat_history[::-1]:
         st.markdown(f"**You:** {chat['user']}")
         st.markdown(f"**Bot:** {chat['bot']}")
+
