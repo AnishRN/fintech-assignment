@@ -9,6 +9,8 @@ from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
+import matplotlib.pyplot as plt
+from datetime import datetime
 
 # ----------------------------
 # Helper functions
@@ -27,7 +29,7 @@ def load_qa_pipeline():
     return pipeline("question-answering", model=model_path, tokenizer=model_path)
 
 def extract_fields_with_qa(text, qa_pipeline):
-    """Uses the QA pipeline to extract key fields from the text."""
+    """Uses the QA pipeline to extract key fields and confidence scores."""
     questions = {
         "bank_name": "Which bank issued this credit card statement?",
         "card_last4": "What are the last 4 digits of the credit card?",
@@ -39,9 +41,12 @@ def extract_fields_with_qa(text, qa_pipeline):
     for key, question in questions.items():
         try:
             result = qa_pipeline(question=question, context=text)
-            answers[key] = result.get("answer", "Not found")
+            answers[key] = {
+                "answer": result.get("answer", "Not found"),
+                "score": round(result.get("score", 0) * 100, 2)
+            }
         except Exception:
-            answers[key] = "Not found"
+            answers[key] = {"answer": "Not found", "score": 0.0}
     return answers
 
 def clean_text(s):
@@ -52,33 +57,33 @@ def clean_text(s):
 
 def normalize_amount(amount):
     if not amount:
-        return "0"
+        return 0.0
     amount = amount.replace('₹','').replace('$','').replace(',','').strip()
     match = re.search(r'[\d\.]+', amount)
-    return match.group(0) if match else "0"
+    return float(match.group(0)) if match else 0.0
 
 def normalize_date(date_str):
-    return clean_text(date_str)
+    date_str = clean_text(date_str)
+    return date_str
 
 def clean_extracted_data(data):
     """Cleans and standardizes extracted fields."""
     return {
         "File Name": data.get("file_name", ""),
-        "Bank Name": clean_text(data.get("bank_name","")),
-        "Card Last 4": clean_text(data.get("card_last4","")),
-        "Billing Cycle": clean_text(data.get("billing_cycle","")),
-        "Payment Due Date": normalize_date(data.get("payment_due_date","")),
-        "Total Amount Due": normalize_amount(data.get("total_amount_due",""))
+        "Bank Name": clean_text(data["bank_name"]["answer"]),
+        "Card Last 4": clean_text(data["card_last4"]["answer"]),
+        "Billing Cycle": clean_text(data["billing_cycle"]["answer"]),
+        "Payment Due Date": normalize_date(data["payment_due_date"]["answer"]),
+        "Total Amount Due": normalize_amount(data["total_amount_due"]["answer"]),
+        "Avg Confidence (%)": round(sum(v["score"] for v in data.values()) / len(data), 2)
     }
 
 # ----------------------------
-# PDF Generator (Improved)
+# PDF Generator
 # ----------------------------
-def generate_pdf(dataframe):
-    """Generates a properly formatted and scaled PDF from the extracted dataframe."""
+def generate_pdf(dataframe, summary_text):
+    """Generates a formatted PDF report with summary and table."""
     buffer = BytesIO()
-
-    # Use landscape layout for better horizontal space
     doc = SimpleDocTemplate(
         buffer,
         pagesize=landscape(letter),
@@ -88,28 +93,25 @@ def generate_pdf(dataframe):
         bottomMargin=30
     )
     elements = []
-
     styles = getSampleStyleSheet()
-    title = Paragraph("Credit Card Statement Extraction Summary", styles['Title'])
-    elements.append(title)
-    elements.append(Spacer(1, 12))
 
-    # Convert DataFrame to list of lists for table
+    title = Paragraph("Credit Card Statement Extraction Report", styles['Title'])
+    date_text = Paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M')}", styles['Normal'])
+    summary = Paragraph(summary_text, styles['Normal'])
+
+    elements += [title, Spacer(1, 10), date_text, Spacer(1, 10), summary, Spacer(1, 20)]
+
+    # Table
     data = [dataframe.columns.tolist()] + dataframe.values.tolist()
-
-    # Wrap long text for readability
     wrapped_data = []
     for row in data:
         wrapped_row = [Paragraph(str(cell), styles['Normal']) for cell in row]
         wrapped_data.append(wrapped_row)
 
-    # Dynamically adjust column widths
-    num_cols = len(dataframe.columns)
-    total_width = 10.5 * inch  # available width on landscape letter
-    col_width = total_width / num_cols
-    col_widths = [col_width for _ in range(num_cols)]
+    total_width = 10.5 * inch
+    col_width = total_width / len(dataframe.columns)
+    col_widths = [col_width for _ in range(len(dataframe.columns))]
 
-    # Create and style the table
     table = Table(wrapped_data, colWidths=col_widths, hAlign='CENTER')
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4F81BD")),
@@ -122,10 +124,7 @@ def generate_pdf(dataframe):
         ("BACKGROUND", (0, 1), (-1, -1), colors.whitesmoke),
         ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
     ]))
-
     elements.append(table)
-
-    # Build and return
     doc.build(elements)
     buffer.seek(0)
     return buffer
@@ -154,25 +153,52 @@ if uploaded_files:
             cleaned_data = clean_extracted_data(extracted_data)
             all_extracted_data.append(cleaned_data)
 
-    # Display results
-    st.subheader("Extracted Information for All PDFs")
     df = pd.DataFrame(all_extracted_data)
-    st.dataframe(df.style.format({"Total Amount Due": "${}"}))
+    st.subheader("Extracted Information")
+    st.dataframe(df.style.format({"Total Amount Due": "₹{:,.2f}".format}))
 
-    # CSV download
+    # ----------------------------
+    # Data Insights
+    # ----------------------------
+    st.subheader("📊 Summary Insights")
+
+    avg_due = df["Total Amount Due"].mean()
+    earliest_due = df["Payment Due Date"].dropna().iloc[0] if not df["Payment Due Date"].empty else "N/A"
+    avg_conf = df["Avg Confidence (%)"].mean()
+
+    st.markdown(f"""
+    - **Average Total Amount Due:** ₹{avg_due:,.2f}  
+    - **Earliest Payment Due Date:** {earliest_due}  
+    - **Average Extraction Confidence:** {avg_conf:.2f}%
+    """)
+
+    # ----------------------------
+    # Visualization
+    # ----------------------------
+    st.subheader("🏦 Total Amount Due by Bank")
+    fig, ax = plt.subplots()
+    df.groupby("Bank Name")["Total Amount Due"].sum().plot(kind="bar", ax=ax)
+    ax.set_ylabel("Total Amount Due (₹)")
+    ax.set_xlabel("Bank Name")
+    ax.set_title("Total Due per Bank")
+    st.pyplot(fig)
+
+    # ----------------------------
+    # Downloads
+    # ----------------------------
     csv_file = df.to_csv(index=False).encode('utf-8')
     st.download_button(
-        label="⬇️ Download All Extracted Data as CSV",
+        label="⬇️ Download Extracted Data (CSV)",
         data=csv_file,
-        file_name="all_credit_statements_data.csv",
+        file_name="credit_statements_data.csv",
         mime="text/csv",
     )
 
-    # PDF download
-    pdf_buffer = generate_pdf(df)
+    summary_text = f"Average amount due: ₹{avg_due:,.2f}. Average confidence: {avg_conf:.2f}%. Earliest payment due: {earliest_due}."
+    pdf_buffer = generate_pdf(df, summary_text)
     st.download_button(
-        label="📄 Download All Extracted Data as PDF",
+        label="📄 Download Full Report (PDF)",
         data=pdf_buffer,
-        file_name="all_credit_statements_data.pdf",
+        file_name="credit_statements_report.pdf",
         mime="application/pdf",
     )
