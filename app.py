@@ -9,7 +9,7 @@ from io import BytesIO
 
 # PDF generation imports
 from reportlab.lib.pagesizes import letter, landscape
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 
@@ -24,7 +24,7 @@ def extract_text_from_pdf(pdf_file):
 
 @st.cache_resource
 def load_qa_pipeline():
-    model_path = "yakul259/credit-statement-scraper"  # replace with your model
+    model_path = "yakul259/credit-statement-scraper"
     return pipeline("question-answering", model=model_path, tokenizer=model_path)
 
 def extract_fields_with_qa(text, qa_pipeline):
@@ -81,11 +81,74 @@ def clean_extracted_data(data):
     }
 
 # ----------------------------
+# Generate plots as images
+# ----------------------------
+def create_plots(df):
+    plot_buffers = []
+
+    # Bar Chart: Total Due per Bank
+    bank_totals = df.groupby("Bank Name")["Total Amount Due"].sum()
+    fig, ax = plt.subplots(figsize=(4,3))
+    bank_totals.plot(kind="bar", ax=ax, color="#4F81BD", edgecolor="black")
+    ax.set_ylabel("Total Amount Due (₹)")
+    ax.set_xlabel("Bank Name")
+    ax.set_title("Total Amount Due per Bank")
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.xticks(rotation=45, ha='right')
+    buf = BytesIO()
+    plt.tight_layout()
+    plt.savefig(buf, format='PNG')
+    buf.seek(0)
+    plot_buffers.append(buf)
+    plt.close(fig)
+
+    # Pie Chart: Share of Total Due by Bank
+    fig2, ax2 = plt.subplots(figsize=(3.5,3.5))
+    bank_totals.plot(kind="pie", autopct='%1.1f%%', startangle=140, ax=ax2, colors=plt.cm.Paired.colors)
+    ax2.set_ylabel("")
+    ax2.set_title("Share of Total Due")
+    buf2 = BytesIO()
+    plt.tight_layout()
+    plt.savefig(buf2, format='PNG')
+    buf2.seek(0)
+    plot_buffers.append(buf2)
+    plt.close(fig2)
+
+    # Histogram: Distribution of Individual Statement Amounts
+    fig3, ax3 = plt.subplots(figsize=(4,3))
+    df["Total Amount Due"].plot(kind="hist", bins=10, edgecolor='black', color="#FF7F0E", ax=ax3)
+    ax3.set_xlabel("Amount Due (₹)")
+    ax3.set_ylabel("Number of Statements")
+    ax3.set_title("Distribution of Statement Amounts")
+    plt.tight_layout()
+    buf3 = BytesIO()
+    plt.savefig(buf3, format='PNG')
+    buf3.seek(0)
+    plot_buffers.append(buf3)
+    plt.close(fig3)
+
+    # Scatter: Confidence vs Amount
+    fig4, ax4 = plt.subplots(figsize=(4,3))
+    ax4.scatter(df["Total Amount Due"], df["Avg Confidence (%)"], color="#2CA02C", alpha=0.7)
+    ax4.set_xlabel("Total Amount Due (₹)")
+    ax4.set_ylabel("Average Confidence (%)")
+    ax4.set_title("Confidence vs Amount")
+    ax4.grid(True, linestyle='--', alpha=0.5)
+    plt.tight_layout()
+    buf4 = BytesIO()
+    plt.savefig(buf4, format='PNG')
+    buf4.seek(0)
+    plot_buffers.append(buf4)
+    plt.close(fig4)
+
+    return plot_buffers
+
+# ----------------------------
 # PDF Generator
 # ----------------------------
-def generate_pdf(dataframe, summary_text):
+def generate_pdf(dataframe, summary_text, plot_buffers):
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), rightMargin=20, leftMargin=20, topMargin=20, bottomMargin=20)
     elements = []
     styles = getSampleStyleSheet()
 
@@ -95,14 +158,14 @@ def generate_pdf(dataframe, summary_text):
 
     elements += [title, Spacer(1, 10), date_text, Spacer(1, 10), summary, Spacer(1, 20)]
 
+    # Table
     data = [dataframe.columns.tolist()] + dataframe.values.tolist()
     wrapped_data = []
     for row in data:
         wrapped_row = [Paragraph(str(cell), styles['Normal']) for cell in row]
         wrapped_data.append(wrapped_row)
 
-    total_width = 10.5 * 72  # points
-    col_width = total_width / len(dataframe.columns)
+    col_width = 10.5*72 / len(dataframe.columns)
     col_widths = [col_width for _ in range(len(dataframe.columns))]
 
     table = Table(wrapped_data, colWidths=col_widths, hAlign='CENTER')
@@ -113,12 +176,19 @@ def generate_pdf(dataframe, summary_text):
         ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
         ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
         ("FONTSIZE", (0,0), (-1,-1), 9),
-        ("BOTTOMPADDING", (0,0), (-1,0), 10),
+        ("BOTTOMPADDING", (0,0), (-1,0), 8),
         ("BACKGROUND", (0,1), (-1,-1), colors.whitesmoke),
         ("GRID", (0,0), (-1,-1), 0.25, colors.grey)
     ]))
-
     elements.append(table)
+    elements.append(Spacer(1, 20))
+
+    # Add plots
+    for buf in plot_buffers:
+        img = Image(buf, width=300, height=200)
+        elements.append(img)
+        elements.append(Spacer(1, 10))
+
     doc.build(elements)
     buffer.seek(0)
     return buffer
@@ -164,45 +234,17 @@ if uploaded_files:
     **Average Confidence:** {avg_confidence:.2f}%
     """)
 
-    # ---- Plots ----
-    # Bar Chart: Total Due per Bank
-    st.subheader("🏦 Total Amount Due per Bank")
-    bank_totals = df.groupby("Bank Name")["Total Amount Due"].sum()
-    fig, ax = plt.subplots(figsize=(6,4))
-    bank_totals.plot(kind="bar", ax=ax, color="#4F81BD", edgecolor="black")
-    ax.set_ylabel("Total Amount Due (₹)")
-    ax.set_xlabel("Bank Name")
-    ax.set_title("Total Amount Due per Bank")
-    ax.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.xticks(rotation=45, ha='right')
-    st.pyplot(fig)
-
-    # Pie Chart: Proportion of Total Due by Bank
-    st.subheader("🥧 Share of Total Due by Bank")
-    fig2, ax2 = plt.subplots(figsize=(5,5))
-    bank_totals.plot(kind="pie", autopct='%1.1f%%', startangle=140, ax=ax2, colors=plt.cm.Paired.colors)
-    ax2.set_ylabel("")
-    ax2.set_title("Proportion of Total Amount Due by Bank")
-    st.pyplot(fig2)
-
-    # Histogram: Distribution of Individual Statement Amounts
-    st.subheader("📊 Distribution of Statement Amounts")
-    fig3, ax3 = plt.subplots(figsize=(6,4))
-    df["Total Amount Due"].plot(kind="hist", bins=10, edgecolor='black', color="#FF7F0E", ax=ax3)
-    ax3.set_xlabel("Amount Due (₹)")
-    ax3.set_ylabel("Number of Statements")
-    ax3.set_title("Distribution of Statement Amounts")
-    st.pyplot(fig3)
-
-    # Scatter: Confidence vs Amount
-    st.subheader("🔍 Confidence vs Total Amount Due")
-    fig4, ax4 = plt.subplots(figsize=(6,4))
-    ax4.scatter(df["Total Amount Due"], df["Avg Confidence (%)"], color="#2CA02C", alpha=0.7)
-    ax4.set_xlabel("Total Amount Due (₹)")
-    ax4.set_ylabel("Average Confidence (%)")
-    ax4.set_title("Extraction Confidence vs Amount")
-    ax4.grid(True, linestyle='--', alpha=0.5)
-    st.pyplot(fig4)
+    # ---- Streamlit Plots (smaller) ----
+    plot_buffers = create_plots(df)
+    st.subheader("Visualizations")
+    # Bar Chart
+    st.image(plot_buffers[0], caption="Total Amount Due per Bank")
+    # Pie Chart
+    st.image(plot_buffers[1], caption="Share of Total Due by Bank")
+    # Histogram
+    st.image(plot_buffers[2], caption="Distribution of Statement Amounts")
+    # Scatter
+    st.image(plot_buffers[3], caption="Extraction Confidence vs Amount")
 
     # ---- Downloads ----
     csv_file = df.to_csv(index=False).encode('utf-8')
@@ -214,7 +256,7 @@ if uploaded_files:
     )
 
     summary_text = f"Processed {len(df)} statements. Total due: ₹{total_due_sum:,.2f}. Average confidence: {avg_confidence:.2f}%."
-    pdf_buffer = generate_pdf(df, summary_text)
+    pdf_buffer = generate_pdf(df, summary_text, plot_buffers)
     st.download_button(
         label="📄 Download Full Report as PDF",
         data=pdf_buffer,
