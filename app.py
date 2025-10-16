@@ -64,7 +64,6 @@ def normalize_date(date_str):
     return clean_text(date_str)
 
 def clean_extracted_data(data):
-    """Cleans and standardizes extracted fields."""
     numeric_scores = [
         v["score"] for v in data.values()
         if isinstance(v, dict) and "score" in v
@@ -149,8 +148,6 @@ if uploaded_files:
             all_extracted_data.append(cleaned_data)
 
     df = pd.DataFrame(all_extracted_data)
-
-    # Ensure numeric
     df["Total Amount Due"] = df["Total Amount Due"].astype(float)
     df["Avg Confidence (%)"] = df["Avg Confidence (%)"].astype(float)
 
@@ -167,15 +164,45 @@ if uploaded_files:
     **Average Confidence:** {avg_confidence:.2f}%
     """)
 
-    # ---- Chart ----
+    # ---- Plots ----
+    # Bar Chart: Total Due per Bank
     st.subheader("🏦 Total Amount Due per Bank")
     bank_totals = df.groupby("Bank Name")["Total Amount Due"].sum()
-    fig, ax = plt.subplots()
-    bank_totals.plot(kind="bar", ax=ax)
+    fig, ax = plt.subplots(figsize=(6,4))
+    bank_totals.plot(kind="bar", ax=ax, color="#4F81BD", edgecolor="black")
     ax.set_ylabel("Total Amount Due (₹)")
     ax.set_xlabel("Bank Name")
     ax.set_title("Total Amount Due per Bank")
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.xticks(rotation=45, ha='right')
     st.pyplot(fig)
+
+    # Pie Chart: Proportion of Total Due by Bank
+    st.subheader("🥧 Share of Total Due by Bank")
+    fig2, ax2 = plt.subplots(figsize=(5,5))
+    bank_totals.plot(kind="pie", autopct='%1.1f%%', startangle=140, ax=ax2, colors=plt.cm.Paired.colors)
+    ax2.set_ylabel("")
+    ax2.set_title("Proportion of Total Amount Due by Bank")
+    st.pyplot(fig2)
+
+    # Histogram: Distribution of Individual Statement Amounts
+    st.subheader("📊 Distribution of Statement Amounts")
+    fig3, ax3 = plt.subplots(figsize=(6,4))
+    df["Total Amount Due"].plot(kind="hist", bins=10, edgecolor='black', color="#FF7F0E", ax=ax3)
+    ax3.set_xlabel("Amount Due (₹)")
+    ax3.set_ylabel("Number of Statements")
+    ax3.set_title("Distribution of Statement Amounts")
+    st.pyplot(fig3)
+
+    # Scatter: Confidence vs Amount
+    st.subheader("🔍 Confidence vs Total Amount Due")
+    fig4, ax4 = plt.subplots(figsize=(6,4))
+    ax4.scatter(df["Total Amount Due"], df["Avg Confidence (%)"], color="#2CA02C", alpha=0.7)
+    ax4.set_xlabel("Total Amount Due (₹)")
+    ax4.set_ylabel("Average Confidence (%)")
+    ax4.set_title("Extraction Confidence vs Amount")
+    ax4.grid(True, linestyle='--', alpha=0.5)
+    st.pyplot(fig4)
 
     # ---- Downloads ----
     csv_file = df.to_csv(index=False).encode('utf-8')
