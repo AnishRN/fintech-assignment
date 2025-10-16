@@ -83,7 +83,7 @@ def clean_extracted_data(data):
 # ----------------------------
 # Create meaningful insight plots
 # ----------------------------
-def create_meaningful_plots(df):
+def create_meaningful_insight_plots(df):
     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
     fig.tight_layout(pad=4)
 
@@ -259,5 +259,6 @@ if user_question and uploaded_files:
         st.write(f"*Confidence:* {round(result.get('score',0)*100,2)}%")
     except Exception as e:
         st.error(f"Error processing question: {e}")
+
 
 
