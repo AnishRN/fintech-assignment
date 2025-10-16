@@ -81,13 +81,13 @@ def clean_extracted_data(data):
     }
 
 # ----------------------------
-# Create meaningful plots
+# Create meaningful insight plots
 # ----------------------------
-def create_meaningful_plots(df):
+def create_meaningful_insight_plots(df):
     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
     fig.tight_layout(pad=4)
 
-    # 1. Total Amount Due per Bank - unchanged
+    # 1. Total Amount Due per Bank
     bank_totals = df.groupby("Bank Name")["Total Amount Due"].sum().sort_values(ascending=False)
     bank_totals.plot(kind="bar", color="#4F81BD", edgecolor="black", ax=axes[0,0])
     axes[0,0].set_title("Total Amount Due per Bank")
@@ -123,7 +123,7 @@ def create_meaningful_plots(df):
     axes[1,0].set_ylabel("Number of Statements")
     axes[1,0].tick_params(axis='x', rotation=45)
 
-    # 5. Top 5 Cards by Average Amount - unchanged
+    # 5. Top 5 Cards by Average Amount
     top5_cards = df.groupby("Card Last 4")["Total Amount Due"].mean().sort_values(ascending=False).head(5)
     top5_cards.plot(kind="bar", color="#17BECF", edgecolor="black", ax=axes[1,1])
     axes[1,1].set_title("Top 5 Cards by Average Amount")
@@ -131,7 +131,7 @@ def create_meaningful_plots(df):
     axes[1,1].set_xlabel("Card Last 4")
     axes[1,1].tick_params(axis='x', rotation=45)
 
-    # 6. Number of Statements per Bank - unchanged
+    # 6. Number of Statements per Bank
     statements_per_bank = df.groupby("Bank Name").size().sort_values(ascending=False)
     statements_per_bank.plot(kind="bar", color="#BCBD22", edgecolor="black", ax=axes[1,2])
     axes[1,2].set_title("Number of Statements per Bank")
@@ -211,66 +211,56 @@ uploaded_files = st.file_uploader(
 if uploaded_files:
     qa_pipeline = load_qa_pipeline()
     all_extracted_data = []
-    full_text = ""  # For chatbot context
 
     for pdf_file in uploaded_files:
         with st.spinner(f"Processing {pdf_file.name}..."):
             pdf_text = extract_text_from_pdf(pdf_file)
-            full_text += pdf_text + " "
             extracted_data = extract_fields_with_qa(pdf_text, qa_pipeline)
             extracted_data["file_name"] = pdf_file.name
             cleaned_data = clean_extracted_data(extracted_data)
             all_extracted_data.append(cleaned_data)
 
     df = pd.DataFrame(all_extracted_data)
-    df["Total Amount Due"] = df["Total Amount Due"].astype(float)
-    df["Avg Confidence (%)"] = df["Avg Confidence (%)"].astype(float)
 
-    # Display table
-    st.subheader("📊 Extracted Information")
-    st.dataframe(df.style.format({"Total Amount Due": "₹{:,.2f}"}))
+    st.subheader("Extracted Information for All PDFs")
+    st.dataframe(df.style.format({"Total Amount Due": "₹{:.2f}", "Avg Confidence (%)": "{:.2f}%"}))
 
-    # Summary
-    total_due_sum = df["Total Amount Due"].sum()
-    avg_confidence = df["Avg Confidence (%)"].mean()
-    summary_text = f"Processed {len(df)} statements. Total due: ₹{total_due_sum:,.2f}. Average confidence: {avg_confidence:.2f}%."
-    st.subheader("📈 Summary Insights")
-    st.markdown(summary_text)
+    # Download CSV
+    csv_file = df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="⬇️ Download CSV",
+        data=csv_file,
+        file_name="credit_statements_data.csv",
+        mime="text/csv"
+    )
 
-    # Plots
-    fig = create_meaningful_plots(df)
+    # Generate and display plots
+    fig = create_meaningful_insight_plots(df)
+    st.subheader("Insights from Data")
     st.pyplot(fig)
 
-    # Downloads
-    csv_file = df.to_csv(index=False).encode('utf-8')
-    st.download_button("⬇️ Download Extracted Data as CSV", csv_file, "credit_statements_data.csv", "text/csv")
+    # Generate PDF
+    summary_text = f"Processed {len(df)} statements from {len(df['Bank Name'].unique())} banks."
     pdf_buffer = generate_pdf(df, summary_text, fig)
-    st.download_button("📄 Download Full Report as PDF", pdf_buffer, "credit_statements_report.pdf", "application/pdf")
+    st.download_button(
+        label="⬇️ Download PDF Report",
+        data=pdf_buffer,
+        file_name="credit_statements_report.pdf",
+        mime="application/pdf"
+    )
 
-    # ----------------------------
-    # Chatbot-style Q&A
-    # ----------------------------
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = []
+# ----------------------------
+# Simple Chatbot-style Q&A
+# ----------------------------
+st.subheader("💬 Ask Questions About the Uploaded Statements")
+user_question = st.text_input("Type your question here:")
 
-    st.subheader("💬 Ask Your Statements (Chatbot Mode)")
-    user_question = st.text_input("Type your question here and press Enter:")
-
-    if user_question:
-        if full_text:
-            with st.spinner("Thinking..."):
-                try:
-                    answer = qa_pipeline(question=user_question, context=full_text)
-                    response_text = f"{answer.get('answer','Not found')} (Confidence: {round(answer.get('score',0)*100,2)}%)"
-                    st.session_state.chat_history.append({"user": user_question, "bot": response_text})
-                except Exception as e:
-                    st.error(f"Error: {str(e)}")
-
-    # Display chat history (latest on top)
-    for chat in st.session_state.chat_history[::-1]:
-        st.markdown(f"**You:** {chat['user']}")
-        st.markdown(f"**Bot:** {chat['bot']}")
-
-
-
-
+if user_question and uploaded_files:
+    qa_pipeline = load_qa_pipeline()
+    combined_text = " ".join(extract_text_from_pdf(f) for f in uploaded_files)
+    try:
+        result = qa_pipeline(question=user_question, context=combined_text)
+        st.write(f"**Answer:** {result.get('answer', 'Not found')}")
+        st.write(f"*Confidence:* {round(result.get('score',0)*100,2)}%")
+    except Exception as e:
+        st.error(f"Error processing question: {e}")
